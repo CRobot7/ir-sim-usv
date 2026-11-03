@@ -11,6 +11,9 @@ from irsim.lib.algorithm.kinematics import (
     omni_angular_kinematics,
     omni_kinematics,
 )
+from irsim.lib.algorithm.usv_wamv import WAMV3DOF, usv_wamv_kinematics
+from irsim.lib.algorithm.wamv_params import TWJ_MAX, XUDOT_FRAC_DEFAULT
+from irsim.util.random import rng
 from irsim.util.util import (
     check_number,
     vel_diff2world,
@@ -535,6 +538,113 @@ class AckermannKinematics(KinematicsHandler):
         )
 
 
+@register_kinematics("usv")
+class UsvKinematics(KinematicsHandler):
+    """WAM-V 3DOF USV: Fossen surge/sway/yaw with dual waterjets.
+
+    State is ``[x, y, ψ, u, v, r]``. The command is port/stbd thrust
+    ``[T_port, T_stbd]`` in Newtons, clamped to ``[0, Twj_max]``.
+
+    YAML keys under ``kinematics:`` (besides ``name: usv``):
+
+    * ``payload`` — add-on mass [kg] relative to empty 150 kg (default 0).
+    * ``mass`` — absolute displacement [kg]; overrides ``payload`` when set.
+    * ``twj_max`` — per-jet thrust limit [N] (default 204).
+    * ``xudot_frac`` — surge added-mass fraction of ``-m`` (default 0.16).
+
+    Coefficients: Klinger et al., IEEE JOE 2017, Tables I–III.
+    """
+
+    action_dim = 2
+    min_state_dim = 6
+    state_dim = 6
+    vel_max: ClassVar[list[float]] = [TWJ_MAX, TWJ_MAX]
+    vel_min: ClassVar[list[float]] = [0.0, 0.0]
+    acce: ClassVar[list[float]] = [float("inf"), float("inf")]
+    color_key = "robot"
+    description = None
+    show_arrow = True
+    yaw_rate_row = None
+    translation_rows: tuple[int, ...] = ()
+
+    def __init__(
+        self,
+        name,
+        noise: bool = False,
+        alpha: list | None = None,
+        payload: float = 0.0,
+        mass: float | None = None,
+        twj_max: float = TWJ_MAX,
+        xudot_frac: float = XUDOT_FRAC_DEFAULT,
+    ):
+        super().__init__(name, noise, alpha)
+        self.model = WAMV3DOF(
+            mass=mass,
+            payload=payload,
+            twj_max=twj_max,
+            xudot_frac=xudot_frac,
+        )
+
+    def set_payload(self, payload: float = 0.0) -> None:
+        self.model.set_payload(payload)
+
+    def set_displacement(self, mass: float) -> None:
+        self.model.set_displacement(mass)
+
+    def step(
+        self, state: np.ndarray, velocity: np.ndarray, step_time: float
+    ) -> np.ndarray:
+        """Advance the 6x1 WAM-V state one Euler step.
+
+        Args:
+            state: ``[x, y, ψ, u, v, r]``.
+            velocity: ``[T_port, T_stbd]`` [N].
+            step_time: Integration step [s].
+
+        Returns:
+            np.ndarray: Next 6x1 state.
+        """
+        if state.shape[0] < 6:
+            padded = np.zeros((6, 1), dtype=float)
+            padded[: state.shape[0]] = state[: state.shape[0]]
+            state = padded
+        thrust = np.asarray(velocity, dtype=float).reshape(-1, 1)
+        if thrust.shape[0] < 2:
+            padded_u = np.zeros((2, 1), dtype=float)
+            padded_u[: thrust.shape[0]] = thrust
+            thrust = padded_u
+        if self.noise:
+            std = float(self.alpha[0]) if self.alpha else 0.03
+            thrust = thrust + rng.normal(0.0, std, size=thrust.shape)
+        return usv_wamv_kinematics(state[0:6], thrust[0:2], step_time, self.model)
+
+    def velocity_to_xy(self, state: np.ndarray, velocity: np.ndarray) -> np.ndarray:
+        """World-frame ``[vx, vy]`` from body surge/sway, not from thrust.
+
+        The command ``velocity`` is waterjet force, so the plot arrow uses
+        the body velocities stored in ``state[3:5]``.
+        """
+        if state.shape[0] < 5:
+            return np.zeros((2, 1))
+        return vel_omni2world(_heading(state), state[3:5])
+
+    def velocity_from_xy(
+        self, state: np.ndarray, velocity_xy: np.ndarray
+    ) -> np.ndarray:
+        """A world-frame push does not map onto waterjet thrust."""
+        return np.zeros((self.action_dim, 1))
+
+    def compute_max_speed(self, vel_max: np.ndarray) -> float:
+        """Peak surge from both jets at ``Twj_max``, in Newtons not m/s.
+
+        Used only as a scale; the true speed comes from the hydrodynamics.
+        """
+        return float(vel_max[0, 0] + vel_max[1, 0])
+
+    def compute_heading(self, state: np.ndarray, velocity: np.ndarray) -> float:
+        return float(state[2, 0]) if state.shape[0] > 2 else 0.0
+
+
 class PassiveKinematics(KinematicsHandler):
     """Kinematics of an object that does not drive itself.
 
@@ -642,7 +752,7 @@ class KinematicsFactory:
 
         Args:
             name: Registered kinematics name: ``diff``, ``omni``, ``omni_angular``,
-                ``acker``, or a custom name registered with
+                ``acker``, ``usv``, or a custom name registered with
                 :func:`register_kinematics`. ``None`` defaults to ``diff``;
                 ``static`` gives the :class:`PassiveKinematics` of an object
                 that never drives itself.

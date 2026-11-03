@@ -1,0 +1,18 @@
+world:
+  height: 50
+  width: 80
+  step_time: 0.05
+  sample_time: 0.05
+  control_mode: auto
+
+robot:
+  kinematics:
+    name: usv
+    payload: 0.0
+  shape:
+    name: rectangle
+    length: 4.29
+    width: 2.20
+  state: [10, 10, 0, 0, 0, 0]
+  vel_max: [204, 204]
+  vel_min: [0, 0]

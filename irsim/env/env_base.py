@@ -362,6 +362,7 @@ class EnvBase:
                 - **Differential robot**: [linear_velocity, angular_velocity]
                 - **Omnidirectional robot**: [velocity_x, velocity_y]
                 - **Ackermann robot**: [linear_velocity, steering_angle]
+                - **USV (WAM-V)**: [T_port, T_stbd] waterjet thrust in Newtons
 
                 If None, keyboard control is applied when enabled; otherwise robots use configured behaviors.
                 Robots without a configured behavior remain static.
@@ -661,6 +662,17 @@ class EnvBase:
                 key_vel = np.array([[fwd], [axis2]])
             elif kf_name == "omni_angular":
                 key_vel = np.array([[fwd], [axis2], [rot]])
+            elif kf_name == "usv":
+                # Dual waterjets: W/S is common surge thrust, A/D is
+                # differential yaw. Jets cannot reverse, so negative
+                # common thrust is dropped.
+                t_max = float(robot.vel_max[0, 0])
+                common = max(fwd, 0.0)
+                ang_max = self.keyboard.key_ang_max
+                diff = (axis2 / ang_max * t_max) if ang_max else 0.0
+                t_p = float(np.clip(common + diff, 0.0, t_max))
+                t_s = float(np.clip(common - diff, 0.0, t_max))
+                key_vel = np.array([[t_p], [t_s]])
             else:
                 key_vel = np.array([[fwd], [axis2]])
 

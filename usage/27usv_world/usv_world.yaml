@@ -1,0 +1,96 @@
+# WAM-V USV14 in IR-SIM.
+# Hydrodynamics: Klinger et al., IEEE JOE 2017,
+# "Control of an Unmanned Surface Vehicle With Uncertain Displacement and Drag"
+# (Tables I–III). Dual waterjets, command = [T_port, T_stbd] in Newtons.
+#
+# Body frame origin = CG (Table I LCG = 1.27 m from transom).
+# +x forward, +y to port. Lidar is at the CG.
+world:
+  height: 50
+  width: 80
+  step_time: 0.05
+  sample_time: 0.05
+  offset: [0, 0]
+  control_mode: keyboard
+  collision_mode: stop
+  plot:
+    viewpoint: robot_0
+
+robot:
+  kinematics:
+    name: usv
+    payload: 0.0      # kg add-on; 0 = empty 150 kg, max 130 kg
+    twj_max: 204.0
+    xudot_frac: 0.16
+  # Catamaran top-view from Table I:
+  #   L=4.29 m, BOA=2.20 m, hull spacing B=1.83 m, pontoon beam 0.37 m
+  #   transom at x=-1.27 m, bow at x=+3.02 m (CG at origin)
+  shape:
+    name: compound
+    parts:
+      # port pontoon, pointed bow
+      - name: polygon
+        vertices:
+          - [-1.27, 0.73]
+          - [2.32, 0.73]
+          - [3.02, 0.915]
+          - [2.32, 1.10]
+          - [-1.27, 1.10]
+      # starboard pontoon, pointed bow
+      - name: polygon
+        vertices:
+          - [-1.27, -1.10]
+          - [2.32, -1.10]
+          - [3.02, -0.915]
+          - [2.32, -0.73]
+          - [-1.27, -0.73]
+      # payload deck on the CG (cross structure)
+      - name: rectangle
+        length: 1.80
+        width: 1.50
+        pose: [0.15, 0.0, 0.0]
+      # aft crossbeam / waterjet mount
+      - name: rectangle
+        length: 0.40
+        width: 1.83
+        pose: [-1.07, 0.0, 0.0]
+      # forward crossbeam
+      - name: rectangle
+        length: 0.28
+        width: 1.50
+        pose: [1.35, 0.0, 0.0]
+  state: [12, 12, 0, 0, 0, 0]  # [x, y, psi, u, v, r], pose is CG
+  goal: [60, 40, 0]
+  vel_max: [204, 204]
+  vel_min: [0, 0]
+  sensors:
+    - name: lidar2d
+      range_min: 0.2
+      range_max: 20.0
+      angle_range: 6.28318530718   # 360 deg
+      number: 180
+      noise: false
+      offset: [0, 0, 0]            # CG / LCG
+      plot:
+        alpha: 0.35
+  plot:
+    show_trajectory: true
+    show_trail: true
+    show_goal: true
+    show_arrow: true
+
+obstacle:
+  - shape: {name: circle, radius: 1.5}
+    state: [30, 20, 0]
+  - shape: {name: circle, radius: 1.2}
+    state: [45, 12, 0]
+  - shape: {name: rectangle, length: 4.0, width: 1.5}
+    state: [35, 35, 0.4]
+  - shape: {name: circle, radius: 2.0}
+    state: [55, 28, 0]
+
+gui:
+  keyboard:
+    key_lv_max: 204.0
+    key_ang_max: 204.0
+    backend: mpl

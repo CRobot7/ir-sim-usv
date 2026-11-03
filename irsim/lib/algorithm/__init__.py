@@ -19,9 +19,11 @@ from .kinematics import (
 from .ray_casting_2d import cast_rays
 from .rvo import reciprocal_vel_obs
 from .social_force_model import SocialForceModelBatch, social_force_model
+from .usv_wamv import WAMV3DOF, usv_wamv_kinematics
 
 __all__ = [
     "SocialForceModelBatch",
+    "WAMV3DOF",
     "ackermann_kinematics",
     "cast_rays",
     "differential_kinematics",
@@ -31,4 +33,5 @@ __all__ = [
     "random_generate_polygon",
     "reciprocal_vel_obs",
     "social_force_model",
+    "usv_wamv_kinematics",
 ]
