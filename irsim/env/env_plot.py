@@ -30,8 +30,8 @@ from matplotlib.patches import (
     Rectangle,
     Wedge,
 )
-from matplotlib.ticker import MultipleLocator
 from matplotlib.path import Path
+from matplotlib.ticker import MultipleLocator
 from mpl_toolkits.mplot3d import Axes3D
 from shapely.geometry import MultiPolygon as ShapelyMultiPolygon
 from shapely.geometry import Polygon as ShapelyPolygon
