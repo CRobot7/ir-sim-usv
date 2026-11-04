@@ -8,10 +8,10 @@ IEEE Journal of Oceanic Engineering, vol. 42, no. 2, pp. 458-477, Apr. 2017.
 
 Tables used here (same numbering as the paper):
 
-* Table I  — principal characteristics (L, LWL, beam, draft, LCG, AWP, ...).
-* Table II — surge linear / quadratic drag ``X_u``, ``X_uu`` at the three
+* Table I  - principal characteristics (L, LWL, beam, draft, LCG, AWP, ...).
+* Table II - surge linear / quadratic drag ``X_u``, ``X_uu`` at the three
   measured displacements (slick 150 kg, lightship 220 kg, full 246 kg).
-* Table III — added-mass and nonlinear sway/yaw drag, evaluated from the
+* Table III - added-mass and nonlinear sway/yaw drag, evaluated from the
   paper's closed-form expressions (with the same empirical scale factors
   as the project simulator in ``usv_calib/simulator``).
 
@@ -22,7 +22,7 @@ aligned with the hulls: each jet produces a surge force in ``[0, Twj_max]``
 Load convention (project extension of Table I, not a paper table):
 
     m = M0 + payload,  payload in [0, P_FULL]
-    M0 = 150 kg (slick / empty), P_FULL = 130 kg → design full 280 kg.
+    M0 = 150 kg (slick / empty), P_FULL = 130 kg -> design full 280 kg.
 
 Table II is piecewise-linear in mass and extrapolated outside the paper
 nodes; a small positive floor keeps extrapolated ``X_u``, ``X_uu`` from
@@ -32,12 +32,11 @@ changing sign (which would turn drag into thrust).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Tuple
 
 import numpy as np
 
 # ---------------------------------------------------------------------------
-# Table I — principal characteristics
+# Table I - principal characteristics
 # ---------------------------------------------------------------------------
 L = 4.29  # overall length [m]
 LWL = 3.21  # length on waterline [m]
@@ -120,12 +119,14 @@ def mass_from_payload(payload: float | None) -> float:
     return M0 + clamp_payload(payload)
 
 
-def draft_from_mass(m: float, m_ref: float = M_LIGHTSHIP, T_ref: float = T_REF) -> float:
+def draft_from_mass(
+    m: float, m_ref: float = M_LIGHTSHIP, T_ref: float = T_REF
+) -> float:
     """Draft from mass via waterplane area (hydrostatic, Table I AWP)."""
     return float(T_ref + (m - m_ref) / (RHO * AWP))
 
 
-def interp_table_ii(m: float, drag_floor: float = 1e-3) -> Tuple[float, float]:
+def interp_table_ii(m: float, drag_floor: float = 1e-3) -> tuple[float, float]:
     """Piecewise-linear Table II; extrapolate outside the paper nodes.
 
     Magnitudes are floored to ``drag_floor``: raw extrapolation beyond 246 kg
@@ -149,7 +150,7 @@ def interp_table_ii(m: float, drag_floor: float = 1e-3) -> Tuple[float, float]:
     return float(max(xuu, drag_floor)), float(max(xu, drag_floor))
 
 
-def _table_iii_added_mass(m: float, T: float, xudot_frac: float) -> Dict[str, float]:
+def _table_iii_added_mass(m: float, T: float, xudot_frac: float) -> dict[str, float]:
     """Table III added-mass terms, with the project simulator scale factors."""
     pi = np.pi
     rho = RHO
@@ -177,7 +178,7 @@ def _table_iii_added_mass(m: float, T: float, xudot_frac: float) -> Dict[str, fl
     }
 
 
-def _table_iii_nonlinear_drag(T: float) -> Dict[str, float]:
+def _table_iii_nonlinear_drag(T: float) -> dict[str, float]:
     """Table III nonlinear cross-flow drag (paper closed-form, scale 1.0)."""
     rho = RHO
     L_ = L
@@ -205,7 +206,7 @@ def _table_iii_nonlinear_drag(T: float) -> Dict[str, float]:
     }
 
 
-def velocity_linear_drag(u: float, v: float, T: float) -> Dict[str, float]:
+def velocity_linear_drag(u: float, v: float, T: float) -> dict[str, float]:
     """Speed-dependent linear sway/yaw drag (project simulator, Table III family)."""
     pi = np.pi
     rho = RHO

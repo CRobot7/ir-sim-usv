@@ -143,6 +143,9 @@ test.html
 
 test_animation.gif
 test_animation.mp4
+*.gif
+*.mp4
+**/animation/
 
 docs/source/api/irsim/
 _build/

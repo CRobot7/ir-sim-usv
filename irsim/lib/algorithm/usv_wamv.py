@@ -3,14 +3,14 @@
 The equations match the project simulator in
 ``usv_calib/simulator/wamv_3dof.py``, whose coefficients come from
 Klinger et al., IEEE JOE 2017, "Control of an Unmanned Surface Vehicle
-With Uncertain Displacement and Drag" (Tables I–III).
+With Uncertain Displacement and Drag" (Tables I-III).
 
 State (column vector)::
 
-    η, ν = [x, y, ψ, u, v, r]
+    eta, nu = [x, y, psi, u, v, r]
 
-    η̇ = J(ψ) ν
-    M ν̇ = τ - C(ν) ν - D(ν)
+    eta_dot = J(psi) nu
+    M nu_dot = tau - C(nu) nu - D(nu)
 
 Control is the two waterjet thrusts ``[T_port, T_stbd]`` in Newtons,
 clamped to ``[0, Twj_max]``. Yaw moment is ``(T_port - T_stbd) * B / 2``.
@@ -18,16 +18,15 @@ clamped to ``[0, Twj_max]``. Yaw moment is ``(T_port - T_stbd) * B / 2``.
 
 from __future__ import annotations
 
-from typing import Optional
-
 import numpy as np
 
 from irsim.lib.algorithm.wamv_params import (
     TWJ_MAX,
-    WAMVCoeffs,
     XUDOT_FRAC_DEFAULT,
+    WAMVCoeffs,
     coeffs_at_mass,
     mass_from_payload,
+    velocity_linear_drag,
 )
 from irsim.util.util import validate_shape
 
@@ -91,8 +90,6 @@ def _surge_pontoon_drag(nu: np.ndarray, c: WAMVCoeffs) -> tuple[float, float]:
 
 
 def _sway_yaw_drag(nu: np.ndarray, c: WAMVCoeffs) -> np.ndarray:
-    from irsim.lib.algorithm.wamv_params import velocity_linear_drag
-
     u, v, r = float(nu[0]), float(nu[1]), float(nu[2])
     lin = velocity_linear_drag(u, v, c.T)
     fy = lin["Y_v"] * v + lin["Y_r"] * r
@@ -127,7 +124,7 @@ class WAMV3DOF:
             self.set_payload(payload)
 
     def set_displacement(self, mass: float) -> None:
-        """Update mass/draft and rebuild M from Tables II–III."""
+        """Update mass/draft and rebuild M from Tables II-III."""
         self.coeffs = coeffs_at_mass(float(mass), xudot_frac=self.xudot_frac)
         self.M = _mass_matrix(self.coeffs)
         self.Minv = np.linalg.inv(self.M)
@@ -155,7 +152,7 @@ class WAMV3DOF:
         self,
         nu: np.ndarray,
         thrust: np.ndarray,
-        tau_env: Optional[np.ndarray] = None,
+        tau_env: np.ndarray | None = None,
     ) -> np.ndarray:
         c = self.coeffs
         tau = self.tau_from_thrust(thrust)
@@ -172,7 +169,7 @@ class WAMV3DOF:
         nu: np.ndarray,
         thrust: np.ndarray,
         dt: float,
-        tau_env: Optional[np.ndarray] = None,
+        tau_env: np.ndarray | None = None,
     ) -> tuple[np.ndarray, np.ndarray]:
         nu = np.asarray(nu, dtype=float).reshape(3)
         eta = np.asarray(eta, dtype=float).reshape(3)
@@ -187,9 +184,9 @@ def usv_wamv_kinematics(
     velocity: np.ndarray,
     step_time: float,
     model: WAMV3DOF,
-    tau_env: Optional[np.ndarray] = None,
+    tau_env: np.ndarray | None = None,
 ) -> np.ndarray:
-    """Advance a 6x1 WAM-V state ``[x, y, ψ, u, v, r]`` by one Euler step.
+    """Advance a 6x1 WAM-V state ``[x, y, psi, u, v, r]`` by one Euler step.
 
     Args:
         state: (6, 1) pose and body velocity.

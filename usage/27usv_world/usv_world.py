@@ -3,7 +3,7 @@
 Keys (control_mode: keyboard):
   W     both waterjets (surge)
   A / D differential thrust (yaw)
-  S     ignored — jets cannot reverse (Klinger 2017 waterjet model)
+  S     ignored - jets cannot reverse (Klinger 2017 waterjet model)
 
 Or pass thrust directly::
 

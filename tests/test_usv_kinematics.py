@@ -14,9 +14,7 @@ def _rest_state():
 
 def test_rest_with_zero_thrust():
     model = WAMV3DOF(payload=0.0)
-    next_state = usv_wamv_kinematics(
-        _rest_state(), np.zeros((2, 1)), 0.05, model
-    )
+    next_state = usv_wamv_kinematics(_rest_state(), np.zeros((2, 1)), 0.05, model)
     assert np.allclose(next_state, 0.0)
 
 
@@ -41,8 +39,8 @@ def test_port_thrust_produces_positive_yaw():
 
 def test_matches_project_simulator_one_step():
     """One Euler step at empty load must match usv_calib VariableLoadWAMV."""
-    from pathlib import Path
     import sys
+    from pathlib import Path
 
     sim_root = Path.home() / "Qsync" / "HNU" / "program" / "zero_shot" / "usv_calib"
     if not (sim_root / "simulator" / "wamv_3dof.py").is_file():

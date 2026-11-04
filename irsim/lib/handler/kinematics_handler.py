@@ -542,17 +542,17 @@ class AckermannKinematics(KinematicsHandler):
 class UsvKinematics(KinematicsHandler):
     """WAM-V 3DOF USV: Fossen surge/sway/yaw with dual waterjets.
 
-    State is ``[x, y, ψ, u, v, r]``. The command is port/stbd thrust
+    State is ``[x, y, psi, u, v, r]``. The command is port/stbd thrust
     ``[T_port, T_stbd]`` in Newtons, clamped to ``[0, Twj_max]``.
 
     YAML keys under ``kinematics:`` (besides ``name: usv``):
 
-    * ``payload`` — add-on mass [kg] relative to empty 150 kg (default 0).
-    * ``mass`` — absolute displacement [kg]; overrides ``payload`` when set.
-    * ``twj_max`` — per-jet thrust limit [N] (default 204).
-    * ``xudot_frac`` — surge added-mass fraction of ``-m`` (default 0.16).
+    * ``payload`` - add-on mass [kg] relative to empty 150 kg (default 0).
+    * ``mass`` - absolute displacement [kg]; overrides ``payload`` when set.
+    * ``twj_max`` - per-jet thrust limit [N] (default 204).
+    * ``xudot_frac`` - surge added-mass fraction of ``-m`` (default 0.16).
 
-    Coefficients: Klinger et al., IEEE JOE 2017, Tables I–III.
+    Coefficients: Klinger et al., IEEE JOE 2017, Tables I-III.
     """
 
     action_dim = 2
@@ -597,7 +597,7 @@ class UsvKinematics(KinematicsHandler):
         """Advance the 6x1 WAM-V state one Euler step.
 
         Args:
-            state: ``[x, y, ψ, u, v, r]``.
+            state: ``[x, y, psi, u, v, r]``.
             velocity: ``[T_port, T_stbd]`` [N].
             step_time: Integration step [s].
 

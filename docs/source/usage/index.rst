@@ -71,7 +71,6 @@ Practical, task-focused guides for building and running IR-SIM scenarios. Browse
         Build occupancy grids from images or Perlin noise.
 
     .. grid-item-card:: Path planning
-        :img-top: gif/path_planning.png
         :link: configure_path_planning
         :link-type: doc
         :text-align: center

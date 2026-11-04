@@ -74,6 +74,7 @@ robot:
       plot:
         alpha: 0.35
   plot:
+    show_sensor: true   # false = hide lidar beams; sensor still runs
     show_trajectory: true
     show_trail: true
     show_goal: true
