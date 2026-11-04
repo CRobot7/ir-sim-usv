@@ -49,6 +49,12 @@ In a combined configuration for multiple simulators, these keys may be nested un
     <div class="yt-leaf"><a class="yt-key" href="#p-w-plot">no_axis</a><span class="yt-type yt-t-bool"><b class="yt-pill">bool</b></span><span class="yt-def">false</span></div>
     <div class="yt-leaf"><a class="yt-key" href="#p-w-plot">tight</a><span class="yt-type yt-t-bool"><b class="yt-pill">bool</b></span><span class="yt-def">true</span></div>
     <div class="yt-leaf"><a class="yt-key" href="#p-w-plot">viewpoint</a><span class="yt-type yt-t-mix"><b class="yt-pill">null/list/str</b></span><span class="yt-def">null</span><span class="yt-desc">camera center or object to follow</span></div>
+    <div class="yt-leaf"><a class="yt-key" href="#p-w-plot">grid</a><span class="yt-type yt-t-bool"><b class="yt-pill">bool</b></span><span class="yt-def">false</span><span class="yt-desc">draw coordinate grid</span></div>
+    <div class="yt-leaf"><a class="yt-key" href="#p-w-plot">grid_interval</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">null</span><span class="yt-desc">major tick spacing (m)</span></div>
+    <div class="yt-leaf"><a class="yt-key" href="#p-w-plot">show_wave</a><span class="yt-type yt-t-bool"><b class="yt-pill">bool</b></span><span class="yt-def">false</span><span class="yt-desc">2D heatmap of WaveField elevation</span></div>
+    <div class="yt-leaf"><a class="yt-key" href="#p-w-plot">wave_cmap</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-def">ocean</span></div>
+    <div class="yt-leaf"><a class="yt-key" href="#p-w-plot">wave_alpha</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">0.75</span></div>
+    <div class="yt-leaf"><a class="yt-key" href="#p-w-plot">wave_resolution</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">1.0</span><span class="yt-desc">heatmap cell size (m)</span></div>
   </div>
   </details>
 </div>
@@ -754,6 +760,12 @@ This section outlines the configuration parameters available for the `world` sec
     - `null`: Use the initial world bounds (no automatic panning).
     - `[x, y]`: Keep the viewport centered at the fixed point `[x, y]`.
     - `"<object_name>"`: Follow the object with that name (dynamic panning), e.g., `"robot_0"`.
+  - `grid`: Draw a coordinate grid on the axes. Default is `False`.
+  - `grid_interval`: Major tick spacing in metres when `grid` is on. Default is matplotlib auto ticks.
+  - `show_wave`: Draw a 2D heatmap of ``WaveField.elevation`` (the same field hulls query). Default is `False`.
+  - `wave_cmap`: Matplotlib colormap for the heatmap. Default is `ocean`.
+  - `wave_alpha`: Heatmap opacity. Default is `0.75`.
+  - `wave_resolution`: Heatmap cell size in metres. Default is `1.0`.
 
   ```yaml
   # Examples

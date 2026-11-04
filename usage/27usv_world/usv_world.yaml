@@ -1,7 +1,7 @@
 # WAM-V USV14 in IR-SIM.
 # Hydrodynamics: Klinger et al., IEEE JOE 2017,
 # "Control of an Unmanned Surface Vehicle With Uncertain Displacement and Drag"
-# (Tables I–III). Dual waterjets, command = [T_port, T_stbd] in Newtons.
+# (Tables I-III). Dual waterjets, command = [T_port, T_stbd] in Newtons.
 #
 # Body frame origin = CG (Table I LCG = 1.27 m from transom).
 # +x forward, +y to port. Lidar is at the CG.
@@ -13,12 +13,28 @@ world:
   offset: [0, 0]
   control_mode: keyboard
   collision_mode: stop
+  wave:
+    # Douglas sea state 2 (smooth). Hs=0.6 m was sea state 3 (slight):
+    # about 6x the WAM-V draft, so linear FK yaw looked violent.
+    Hs: 0.20       # significant wave height [m]; omit world.wave for calm water
+    Tp: 5.0        # s; peak wavelength ~39 m >> L=4.3 m
+    heading: 0.0   # rad, 0 = +x
+    n_freq: 20
+    n_dir: 10
+    seed: 0
   plot:
     viewpoint: robot_0
+    grid: true
+    grid_interval: 5    # metres; major ticks on the axes
+    show_wave: true
+    wave_cmap: ocean
+    wave_alpha: 0.75
+    wave_resolution: 1.0
 
 robot:
   kinematics:
     name: usv
+    vessel: wamv      # irsim/vessels/wamv.yaml
     payload: 0.0      # kg add-on; 0 = empty 150 kg, max 130 kg
     twj_max: 204.0
     xudot_frac: 0.16
@@ -76,9 +92,14 @@ robot:
   plot:
     show_sensor: true   # false = hide lidar beams; sensor still runs
     show_trajectory: true
-    show_trail: true
+    traj_width: 0.12    # default is hull beam (~2.2 m) and looks like a blob
+    traj_alpha: 0.85
+    show_trail: false   # true draws historical hull boxes; keep false for path only
+    obj_fill: false     # outline only; easier to see heading on a small hull
+    obj_linewidth: 2.5
     show_goal: true
     show_arrow: true
+    arrow_length: 3.0   # metres, body +x; color follows the hull
 
 obstacle:
   - shape: {name: circle, radius: 1.5}

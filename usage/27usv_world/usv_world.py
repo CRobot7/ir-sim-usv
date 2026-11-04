@@ -1,4 +1,7 @@
-"""WAM-V USV keyboard demo.
+"""WAM-V USV keyboard demo with a shared irregular sea.
+
+Hands off the keys: waterjets stay at 0 N and the boat still drifts in waves.
+Query the hull wrench with ``env.wave_wrench(env.robot)``.
 
 Keys (control_mode: keyboard):
   W     both waterjets (surge)

@@ -1,0 +1,25 @@
+world:
+  height: 50
+  width: 80
+  step_time: 0.05
+  sample_time: 0.05
+  control_mode: auto
+  collision_mode: unobstructed
+  wave:
+    Hs: 0.6
+    Tp: 4.0
+    heading: 0.0
+    n_freq: 12
+    n_dir: 8
+    seed: 0
+
+robot:
+  number: 2
+  distribution: {name: manual}
+  kinematics: {name: usv, vessel: wamv, payload: 0.0}
+  shape: {name: rectangle, length: 4.29, width: 2.20}
+  state:
+    - [12, 12, 0, 0, 0, 0]
+    - [28, 12, 0, 0, 0, 0]
+  vel_max: [204, 204]
+  vel_min: [0, 0]

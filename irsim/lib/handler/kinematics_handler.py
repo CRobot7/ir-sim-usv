@@ -11,8 +11,8 @@ from irsim.lib.algorithm.kinematics import (
     omni_angular_kinematics,
     omni_kinematics,
 )
-from irsim.lib.algorithm.usv_wamv import WAMV3DOF, usv_wamv_kinematics
-from irsim.lib.algorithm.wamv_params import TWJ_MAX, XUDOT_FRAC_DEFAULT
+from irsim.lib.algorithm.usv_wamv import Fossen3DOF, usv_wamv_kinematics
+from irsim.lib.algorithm.wamv_params import TWJ_MAX
 from irsim.util.random import rng
 from irsim.util.util import (
     check_number,
@@ -540,19 +540,20 @@ class AckermannKinematics(KinematicsHandler):
 
 @register_kinematics("usv")
 class UsvKinematics(KinematicsHandler):
-    """WAM-V 3DOF USV: Fossen surge/sway/yaw with dual waterjets.
+    """Fossen 3DOF USV: surge/sway/yaw with dual waterjets.
 
     State is ``[x, y, psi, u, v, r]``. The command is port/stbd thrust
     ``[T_port, T_stbd]`` in Newtons, clamped to ``[0, Twj_max]``.
 
     YAML keys under ``kinematics:`` (besides ``name: usv``):
 
-    * ``payload`` - add-on mass [kg] relative to empty 150 kg (default 0).
+    * ``vessel`` - spec name or path (default ``wamv`` -> irsim/vessels/wamv.yaml).
+    * ``payload`` - add-on mass [kg] relative to empty (default 0).
     * ``mass`` - absolute displacement [kg]; overrides ``payload`` when set.
-    * ``twj_max`` - per-jet thrust limit [N] (default 204).
-    * ``xudot_frac`` - surge added-mass fraction of ``-m`` (default 0.16).
+    * ``twj_max`` - per-jet thrust limit [N]; default from the vessel YAML.
+    * ``xudot_frac`` - surge added-mass fraction of ``-m``.
 
-    Coefficients: Klinger et al., IEEE JOE 2017, Tables I-III.
+    Default WAM-V coefficients: Klinger et al., IEEE JOE 2017, Tables I-III.
     """
 
     action_dim = 2
@@ -572,29 +573,38 @@ class UsvKinematics(KinematicsHandler):
         name,
         noise: bool = False,
         alpha: list | None = None,
+        vessel: str = "wamv",
         payload: float = 0.0,
         mass: float | None = None,
-        twj_max: float = TWJ_MAX,
-        xudot_frac: float = XUDOT_FRAC_DEFAULT,
+        twj_max: float | None = None,
+        xudot_frac: float | None = None,
     ):
         super().__init__(name, noise, alpha)
-        self.model = WAMV3DOF(
+        self.model = Fossen3DOF(
+            vessel=vessel,
             mass=mass,
             payload=payload,
             twj_max=twj_max,
             xudot_frac=xudot_frac,
         )
+        self.hull = self.model.hull
+        self.tau_env: np.ndarray | None = None
+        self.vel_max = [self.model.twj_max, self.model.twj_max]
+        self.vel_min = [0.0, 0.0]
+        self.default_mass = float(self.model.coeffs.m)
 
     def set_payload(self, payload: float = 0.0) -> None:
         self.model.set_payload(payload)
+        self.hull = self.model.hull
 
     def set_displacement(self, mass: float) -> None:
         self.model.set_displacement(mass)
+        self.hull = self.model.hull
 
     def step(
         self, state: np.ndarray, velocity: np.ndarray, step_time: float
     ) -> np.ndarray:
-        """Advance the 6x1 WAM-V state one Euler step.
+        """Advance the 6x1 USV state one Euler step.
 
         Args:
             state: ``[x, y, psi, u, v, r]``.
@@ -616,7 +626,13 @@ class UsvKinematics(KinematicsHandler):
         if self.noise:
             std = float(self.alpha[0]) if self.alpha else 0.03
             thrust = thrust + rng.normal(0.0, std, size=thrust.shape)
-        return usv_wamv_kinematics(state[0:6], thrust[0:2], step_time, self.model)
+        return usv_wamv_kinematics(
+            state[0:6],
+            thrust[0:2],
+            step_time,
+            self.model,
+            tau_env=self.tau_env,
+        )
 
     def velocity_to_xy(self, state: np.ndarray, velocity: np.ndarray) -> np.ndarray:
         """World-frame ``[vx, vy]`` from body surge/sway, not from thrust.

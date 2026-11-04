@@ -1,0 +1,84 @@
+# Five WAM-V USV14 boats; 2D heatmap of the shared WaveField elevation.
+# show_wave uses the same Airy field the hulls query (not a fake overlay).
+world:
+  height: 50
+  width: 80
+  step_time: 0.05
+  sample_time: 0.05
+  offset: [0, 0]
+  control_mode: auto
+  collision_mode: unobstructed
+  wave:
+    Hs: 0.20
+    Tp: 5.0
+    heading: 0.0
+    n_freq: 20
+    n_dir: 10
+    seed: 0
+  plot:
+    grid: true
+    grid_interval: 5
+    show_wave: true
+    wave_cmap: ocean
+    wave_alpha: 0.75
+    wave_resolution: 1.0
+
+robot:
+  number: 5
+  distribution: {name: manual}
+  color: cycle
+  kinematics:
+    name: usv
+    vessel: wamv
+    payload: 0.0
+    twj_max: 204.0
+    xudot_frac: 0.16
+  shape:
+    name: compound
+    parts:
+      - name: polygon
+        vertices:
+          - [-1.27, 0.73]
+          - [2.32, 0.73]
+          - [3.02, 0.915]
+          - [2.32, 1.10]
+          - [-1.27, 1.10]
+      - name: polygon
+        vertices:
+          - [-1.27, -1.10]
+          - [2.32, -1.10]
+          - [3.02, -0.915]
+          - [2.32, -0.73]
+          - [-1.27, -0.73]
+      - name: rectangle
+        length: 1.80
+        width: 1.50
+        pose: [0.15, 0.0, 0.0]
+      - name: rectangle
+        length: 0.40
+        width: 1.83
+        pose: [-1.07, 0.0, 0.0]
+      - name: rectangle
+        length: 0.28
+        width: 1.50
+        pose: [1.35, 0.0, 0.0]
+  state:
+    - [12, 22, 0, 0, 0, 0]
+    - [26, 22, 0, 0, 0, 0]
+    - [40, 22, 0, 0, 0, 0]
+    - [54, 22, 0, 0, 0, 0]
+    - [68, 22, 0, 0, 0, 0]
+  vel_max: [204, 204]
+  vel_min: [0, 0]
+  plot:
+    show_sensor: false
+    show_trajectory: true
+    traj_width: 0.12
+    traj_alpha: 0.85
+    show_trail: false
+    obj_fill: false
+    obj_linewidth: 2.5
+    show_goal: false
+    show_arrow: true
+    arrow_length: 3.0
+    show_text: true

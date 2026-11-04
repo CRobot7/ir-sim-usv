@@ -13,7 +13,7 @@ from irsim.lib.algorithm.social_force_model import (
     SocialForceModelBatch,
     social_force_model,
 )
-from irsim.lib.algorithm.usv_wamv import WAMV3DOF, usv_wamv_kinematics
+from irsim.lib.algorithm.usv_wamv import WAMV3DOF, Fossen3DOF, usv_wamv_kinematics
 from irsim.lib.behavior.behavior import Behavior
 from irsim.lib.behavior.behavior_registry import (
     register_behavior,

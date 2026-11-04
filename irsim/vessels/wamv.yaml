@@ -1,0 +1,91 @@
+# WAM-V USV14 vessel spec for ir-sim.
+#
+# Copy this file (e.g. to paddle.yaml) and replace numbers to add another hull.
+# Two hydro modes:
+#   hydro.recipe: klinger2017  -> tables below + closed-form Table III (this file)
+#   omit recipe and fill hydro.coeffs with a full Fossen 3DOF set (see comments)
+#
+# Required for a new hull: geometry, hull.sample_points, actuators, and either
+# recipe or hydro.coeffs. Wave force uses hull.*; 3DOF dynamics uses hydro.*.
+
+name: wamv
+kinematics: fossen3dof
+
+geometry:
+  L: 4.29                 # overall length [m]
+  LWL: 3.21               # length on waterline [m]
+  BOA: 2.20               # beam overall [m]
+  BWL: 2.19               # beam on waterline [m]
+  B: 1.83                 # hull-center spacing / waterjet lever [m]
+  LCG: 1.27               # CG from transom [m]; body origin = CG
+  AWP: 1.1                # waterplane area [m^2]
+  T_aft_lightship: 0.127
+  T_mid_lightship: 0.105
+  nabla_lightship: 0.21   # lightship displacement volume [m^3]
+  rho: 1025.0             # seawater [kg/m^3]
+  Cd: 1.1                 # cross-flow drag (Table III)
+
+load:
+  M_slick: 150.0          # empty [kg]
+  M_lightship: 220.0
+  M_full_paper: 246.0     # Table II last node
+  P_full: 130.0           # max add-on payload; design full = 280 kg
+
+hydro:
+  recipe: klinger2017     # delete this key and set coeffs: {...} for a custom hull
+  xudot_frac_table: 0.075
+  xudot_frac_default: 0.16
+  coriolis_ca_scale: 200.0
+  # Table II nodes at M_slick / M_lightship / M_full_paper
+  X_uu: [5.8722, 6.9627, 2.6693]
+  X_u: [50.897, 55.771, 47.341]
+  table_iii_scale:
+    N_vdot: 2.5
+    N_rdot: 1.2
+    Y_rdot: 0.2
+    Y_vdot: 0.9
+    Y_vv: 1.0
+    Y_vr: 1.0
+    Y_rr: 1.0
+    N_rr: 1.0
+  # hydro.coeffs:          # use instead of recipe for a paddle / custom hull
+  #   m: 25.0
+  #   I_z: 5.0
+  #   T: 0.04
+  #   X_u: 2.0
+  #   X_uu: 8.0
+  #   X_udot: -4.0
+  #   Y_vdot: -15.0
+  #   Y_rdot: -1.0
+  #   N_vdot: -1.0
+  #   N_rdot: -2.0
+  #   Y_vv: -10.0
+  #   Y_vr: 0.0
+  #   Y_rv: 0.0
+  #   Y_rr: -2.0
+  #   N_vv: 0.0
+  #   N_vr: -2.0
+  #   N_rv: -2.0
+  #   N_rr: -1.0
+  #   Y_v: 0.0
+  #   Y_r: 0.0
+  #   N_v: 0.0
+  #   N_r: 0.0
+
+hull:
+  type: catamaran
+  # body-frame sample points (origin = CG). z is -T/2 at query time.
+  # bow x = L - LCG = 3.02; stern x = -LCG = -1.27; pontoons at +/- B/2.
+  sample_points:
+    cg: [0.0, 0.0]
+    bow: [3.02, 0.0]
+    stern: [-1.27, 0.0]
+    port: [0.0, 0.915]
+    stbd: [0.0, -0.915]
+  # A_x / A_y scale with draft; omit to derive from T * pontoon size / LWL.
+  # A_z is waterplane area (does not scale with T).
+  A_z: 1.1
+
+actuators:
+  type: dual_waterjet
+  twj_max: 204.0          # per-jet thrust limit [N], no reverse

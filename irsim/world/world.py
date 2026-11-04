@@ -55,6 +55,7 @@ class World:
         "mdownsample",
         "fog_map",
         "fog_map_resolution",
+        "wave",
         "plot",
         "status",
     }
@@ -78,6 +79,7 @@ class World:
         mdownsample: int = 1,
         fog_map: bool = False,
         fog_map_resolution: float | None = None,
+        wave: dict[str, Any] | None = None,
         plot: dict[str, Any] | None = None,
         status: str = "None",
         world_param_instance: Optional["WorldParam"] = None,
@@ -176,6 +178,14 @@ class World:
             )
         else:
             self.fog_map = None
+
+        # irregular wave field (ASVLite linear FK); None when world.wave is omitted
+        if wave:
+            from irsim.lib.algorithm.wave import WaveField
+
+            self.wave_field = WaveField.from_config(wave)
+        else:
+            self.wave_field = None
 
         # visualization
         self.plot_parse = plot
@@ -359,6 +369,11 @@ class World:
             float: Current time based on steps and step_time.
         """
         return round(self.count * self.step_time, 2)
+
+    @property
+    def time_s(self) -> float:
+        """Simulation time [s] without display rounding (for wave phase)."""
+        return self.count * self.step_time
 
     @property
     def _env_param(self):

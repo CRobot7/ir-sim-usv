@@ -71,7 +71,7 @@ class EnvConfig:
         self.world_name = world_name
 
         if self.world_file_path is not None:
-            with open(self.world_file_path) as file:
+            with open(self.world_file_path, encoding="utf-8") as file:
                 com_list = yaml.safe_load(file)
 
                 # The blocks may be nested under an optional 'irsim' key when

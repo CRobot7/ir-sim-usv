@@ -8,6 +8,7 @@ world:
 robot:
   kinematics:
     name: usv
+    vessel: wamv
     payload: 0.0
   shape:
     name: rectangle

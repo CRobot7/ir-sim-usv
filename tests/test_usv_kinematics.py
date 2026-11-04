@@ -1,11 +1,15 @@
 """WAM-V USV 3DOF kinematics (Klinger et al. 2017)."""
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 
 from irsim.lib.algorithm.usv_wamv import WAMV3DOF, usv_wamv_kinematics
 from irsim.lib.algorithm.wamv_params import M0, M_LIGHTSHIP, TWJ_MAX, coeffs_at_mass
 from irsim.lib.handler.kinematics_handler import KinematicsFactory, UsvKinematics
+
+_TESTS = Path(__file__).resolve().parent
 
 
 def _rest_state():
@@ -40,7 +44,6 @@ def test_port_thrust_produces_positive_yaw():
 def test_matches_project_simulator_one_step():
     """One Euler step at empty load must match usv_calib VariableLoadWAMV."""
     import sys
-    from pathlib import Path
 
     sim_root = Path.home() / "Qsync" / "HNU" / "program" / "zero_shot" / "usv_calib"
     if not (sim_root / "simulator" / "wamv_3dof.py").is_file():
@@ -70,7 +73,7 @@ def test_handler_and_factory():
 
     import irsim
 
-    env = irsim.make("test_usv_world.yaml", save_ani=False, display=False)
+    env = irsim.make(str(_TESTS / "test_usv_world.yaml"), save_ani=False, display=False)
     robot = env.robot
     assert robot.kinematics == "usv"
     assert robot.state.shape == (6, 1)

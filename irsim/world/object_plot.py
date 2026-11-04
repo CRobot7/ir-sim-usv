@@ -50,6 +50,7 @@ class PatchStyle:
     zorder: int = 1  # Layer order; larger values render above.
     linestyle: str = "-"  # Patch boundary style.
     line_width: float = 1.0  # Boundary width in Matplotlib points.
+    fill: bool = True  # Fill the interior; False draws the outline only.
 
 
 @dataclass(frozen=True, slots=True)
@@ -153,6 +154,7 @@ class ObjectPlotOptions:
                 edge_color=color,
                 color=color,
             ),
+            arrow=ArrowStyle(color=color),
         )
 
     def with_overrides(self, values: Mapping[str, Any]) -> ObjectPlotOptions:
@@ -181,6 +183,7 @@ class ObjectPlotOptions:
                 "obj_zorder": "zorder",
                 "obj_linestyle": "linestyle",
                 "obj_linewidth": "line_width",
+                "obj_fill": "fill",
             },
         )
         image = _replace_fields(
@@ -495,6 +498,7 @@ class ObjectPlot:
             zorder=style.zorder,
             linestyle=style.linestyle,
             linewidth=style.line_width,
+            fill=style.fill,
         )
 
     def _update_object_line(
@@ -730,6 +734,7 @@ class ObjectPlot:
                         alpha=options.object.alpha,
                         linestyle=options.object.linestyle,
                         zorder=options.object.zorder,
+                        fill=options.object.fill,
                     )
                     self.owner.object_patch.set_linewidth(options.object.line_width)
                     self.owner.plot_patch_list.append(self.owner.object_patch)

@@ -30,6 +30,7 @@ from matplotlib.patches import (
     Rectangle,
     Wedge,
 )
+from matplotlib.ticker import MultipleLocator
 from matplotlib.path import Path
 from mpl_toolkits.mplot3d import Axes3D
 from shapely.geometry import MultiPolygon as ShapelyMultiPolygon
@@ -125,6 +126,9 @@ class EnvPlot:
         # Grid-map overlay artist (managed by draw_grid_map), reused across
         # reset/reload so artists don't stack.
         self._grid_im: Any = None
+        self._wave_im: Any = None
+        self._wave_xy: tuple[Any, Any] | None = None
+        self._wave_cbar: Any = None
         # Set in _init_plot; pre-set so the first call has a defined previous world.
         self.world: Any = None
 
@@ -177,6 +181,8 @@ class EnvPlot:
 
         self.ax.set_xlabel("x [m]")
         self.ax.set_ylabel("y [m]")
+        self._apply_axes_grid(world.plot_parse)
+        self._draw_wave_field()
 
         self.init_objects_plot(objects)
         self.draw_grid_map(world.grid_map)
@@ -186,6 +192,20 @@ class EnvPlot:
             plt.axis("off")
         if world.plot_parse.get("tight", True):
             self.fig.tight_layout()
+
+    def _apply_axes_grid(self, plot_parse: dict[str, Any]) -> None:
+        """Draw a coordinate grid when ``world.plot.grid`` is enabled."""
+        if not plot_parse.get("grid", False):
+            self.ax.grid(False)
+            return
+        interval = plot_parse.get("grid_interval")
+        if interval is not None:
+            span = MultipleLocator(float(interval))
+            self.ax.xaxis.set_major_locator(span)
+            self.ax.yaxis.set_major_locator(span)
+        self.ax.grid(True, linestyle="--", linewidth=0.6, alpha=0.5)
+        if not isinstance(self.ax, Axes3D):
+            self.ax.set_axisbelow(True)
 
     def step(
         self, mode: str = "dynamic", objects: list[Any] | None = None, **kwargs: Any
@@ -375,13 +395,75 @@ class EnvPlot:
     def step_world_plot(self) -> None:
         """Refresh per-step world-level overlays (not tied to a single object).
 
-        Currently steps the fog-of-map overlay; extend here for other
-        world-level visuals updated every step. ``_step_plot`` is a no-op when
-        there is no artist (fog disabled or 3D), so no extra guard is needed.
+        Currently steps the fog-of-map overlay and the 2D wave-elevation map.
+        ``_step_plot`` is a no-op when there is no artist (fog disabled or 3D).
         """
         fog_map = self.world.fog_map
         if fog_map is not None:
             fog_map._step_plot()
+        self._draw_wave_field()
+
+    def _draw_wave_field(self) -> None:
+        """Draw ``WaveField.elevation`` as a 2D heatmap behind the boats.
+
+        Same field the hulls query. Off unless ``world.plot.show_wave`` is true.
+        """
+        if isinstance(self.ax, Axes3D):
+            return
+        wf = getattr(self.world, "wave_field", None)
+        plot = self.world.plot_parse or {}
+        if wf is None or not plot.get("show_wave", False):
+            if self._wave_im is not None:
+                self._wave_im.remove()
+                self._wave_im = None
+            if self._wave_cbar is not None:
+                self._wave_cbar.remove()
+                self._wave_cbar = None
+            self._wave_xy = None
+            return
+
+        if self._wave_xy is None:
+            reso = max(float(plot.get("wave_resolution", 1.0)), 0.2)
+            xs = np.arange(
+                self.world.x_range[0], self.world.x_range[1] + 0.5 * reso, reso
+            )
+            ys = np.arange(
+                self.world.y_range[0], self.world.y_range[1] + 0.5 * reso, reso
+            )
+            self._wave_xy = np.meshgrid(xs, ys)
+        x_grid, y_grid = self._wave_xy
+        eta = np.asarray(wf.elevation(x_grid, y_grid, self.world.time_s), dtype=float)
+        hs = max(float(getattr(wf, "Hs", 0.2)), 0.05)
+        vlim = 1.5 * hs
+        cmap = str(plot.get("wave_cmap", "ocean"))
+        alpha = float(plot.get("wave_alpha", 0.75))
+        extent = (
+            float(self.world.x_range[0]),
+            float(self.world.x_range[1]),
+            float(self.world.y_range[0]),
+            float(self.world.y_range[1]),
+        )
+        if self._wave_im is None:
+            self._wave_im = self.ax.imshow(
+                eta,
+                origin="lower",
+                extent=extent,
+                cmap=cmap,
+                alpha=alpha,
+                vmin=-vlim,
+                vmax=vlim,
+                zorder=0,
+                interpolation="bilinear",
+                aspect="equal",
+            )
+            self._wave_cbar = self.fig.colorbar(
+                self._wave_im, ax=self.ax, fraction=0.035, pad=0.02
+            )
+            self._wave_cbar.set_label("η [m]")
+        else:
+            self._wave_im.set_data(eta)
+            self._wave_im.set_clim(-vlim, vlim)
+            self._wave_im.set_extent(extent)
 
     def draw_trajectory(
         self,
@@ -937,13 +1019,21 @@ def draw_patch(
         return _draw_line(ax, vertices, color, alpha, zorder, linestyle, kwargs)
 
     if shape == "arrow":
-        # The arrow is built in world coordinates and has its own color and
-        # zorder fallbacks, so it is styled without a state transform.
+        # Body-frame arrow along +x; pose is applied like every other patch.
+        # Building it in world coordinates and then transforming again would
+        # place a second copy near 2*(x, y) that drifts with heading.
+        theta = kwargs.pop("theta", None)
         created_element = ax.add_patch(_arrow_patch(state, kwargs))
+        arrow_state = state
+        if theta is not None:
+            arrow_state = np.array(
+                [[float(state[0, 0])], [float(state[1, 0])], [float(theta)]],
+                dtype=float,
+            )
         set_patch_property(
             created_element,
             ax,
-            state=None,  # world coords already applied
+            state=arrow_state,
             color=color if color is not None else kwargs.pop("arrow_color", None),
             alpha=alpha,
             zorder=zorder if zorder is not None else kwargs.pop("arrow_zorder", None),
@@ -1078,20 +1168,11 @@ _PATCH_BUILDERS = {
 }
 
 
-def _arrow_patch(state: np.ndarray, kwargs: dict[str, Any]) -> Arrow:
-    """Build a heading arrow in world coordinates, from the pose in ``state``."""
+def _arrow_patch(_state: np.ndarray, kwargs: dict[str, Any]) -> Arrow:
+    """Build a heading arrow in the body frame, pointing +x from the origin."""
     arrow_length = kwargs.pop("arrow_length", 0.4)
     arrow_width = kwargs.pop("arrow_width", 0.6)
-    # Orientation: use provided theta or state[2]
-    theta = kwargs.pop("theta", float(state[2, 0]) if state.shape[0] >= 3 else 0.0)
-
-    return Arrow(
-        float(state[0, 0]),
-        float(state[1, 0]),
-        float(arrow_length * cos(theta)),
-        float(arrow_length * sin(theta)),
-        width=arrow_width,
-    )
+    return Arrow(0.0, 0.0, float(arrow_length), 0.0, width=arrow_width)
 
 
 def _draw_line(

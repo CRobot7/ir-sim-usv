@@ -121,7 +121,7 @@ class TestPaletteConsumers:
         assert acker.color == "olive"
         assert env.obstacle_list[0].color == "gray"
         assert diff.lidar.color == "blue"
-        assert diff._object_plot.options.arrow.color == "red"
+        assert diff._object_plot.options.arrow.color == "navy"
         assert diff._object_plot.options.fov.color == "pink"
         assert diff._object_plot.options.fov.edge_color == "purple"
         assert FovStyle().edge_color == "purple"

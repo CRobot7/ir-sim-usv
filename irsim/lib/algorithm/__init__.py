@@ -19,10 +19,11 @@ from .kinematics import (
 from .ray_casting_2d import cast_rays
 from .rvo import reciprocal_vel_obs
 from .social_force_model import SocialForceModelBatch, social_force_model
-from .usv_wamv import WAMV3DOF, usv_wamv_kinematics
+from .usv_wamv import WAMV3DOF, Fossen3DOF, usv_wamv_kinematics
 
 __all__ = [
     "WAMV3DOF",
+    "Fossen3DOF",
     "SocialForceModelBatch",
     "ackermann_kinematics",
     "cast_rays",

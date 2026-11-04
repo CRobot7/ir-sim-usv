@@ -920,7 +920,11 @@ class ObjectBase:
 
         if velocity is None:
             if not self.beh_config:
-                if self.role == "robot" and self._world_param.control_mode == "auto":
+                if (
+                    self.role == "robot"
+                    and self._world_param.control_mode == "auto"
+                    and self.kinematics != "usv"
+                ):
                     self.logger.warning_once(
                         f"{self.name}: no behavior configured and no input velocity given, the robot will stay static"
                     )

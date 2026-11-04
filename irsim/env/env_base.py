@@ -444,12 +444,43 @@ class EnvBase:
         """
 
         action = action + [None] * (len(self.objects) - len(action))
+        self._cache_wave_wrenches()
         [
             obj.step(action, sensor_step)
             for obj, action in zip(self.objects, action, strict=True)
         ]
 
         self.build_tree()
+
+    def _cache_wave_wrenches(self) -> None:
+        """Query the shared wave field once, at the current world time.
+
+        Every USV sees the same ``t``. Results are stored on
+        ``UsvKinematics.tau_env`` for the following kinematic step.
+        """
+        wf = getattr(self._world, "wave_field", None)
+        usvs = [
+            obj
+            for obj in self.objects
+            if obj.kinematics == "usv" and hasattr(obj.kf, "tau_env")
+        ]
+        for obj in usvs:
+            obj.kf.tau_env = None
+        if wf is None or not usvs:
+            return
+        t = self._world.time_s
+        etas = np.zeros((len(usvs), 3), dtype=float)
+        nus = np.zeros((len(usvs), 3), dtype=float)
+        hulls = []
+        for i, obj in enumerate(usvs):
+            state = np.asarray(obj.state, dtype=float).reshape(-1)
+            etas[i, : min(3, state.size)] = state[:3]
+            if state.size >= 6:
+                nus[i] = state[3:6]
+            hulls.append(obj.kf.hull)
+        wrenches = wf.wrench_many(etas, nus, hulls, t)
+        for obj, tau in zip(usvs, wrenches, strict=True):
+            obj.kf.tau_env = np.asarray(tau, dtype=float).reshape(3)
 
     def _objects_refresh(self, record_trajectory: bool = False) -> None:
         """Synchronize geometry with externally supplied object states.
@@ -1775,6 +1806,30 @@ class EnvBase:
             float: Step time of the simulation from the world.
         """
         return self._world.step_time
+
+    @property
+    def wave(self):
+        """Shared irregular wave field, or ``None`` if ``world.wave`` is off."""
+        return getattr(self._world, "wave_field", None)
+
+    def wave_wrench(self, robot=None) -> np.ndarray:
+        """Body-frame wave wrench ``[X, Y, N]`` for ``robot`` at the current time.
+
+        Uses that vessel's ``HullGeom``. ``robot`` defaults to the first robot.
+        Returns zeros when no wave field is configured.
+        """
+        if robot is None:
+            robot = self.robot
+        wf = self.wave
+        if wf is None or not hasattr(robot.kf, "hull"):
+            return np.zeros(3, dtype=float)
+        state = np.asarray(robot.state, dtype=float).reshape(-1)
+        eta = np.zeros(3, dtype=float)
+        nu = np.zeros(3, dtype=float)
+        eta[: min(3, state.size)] = state[:3]
+        if state.size >= 6:
+            nu = state[3:6]
+        return wf.wrench(eta, nu, robot.kf.hull, self._world.time_s)
 
     @property
     def step_mode(self) -> str:
