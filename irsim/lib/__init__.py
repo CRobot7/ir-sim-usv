@@ -8,12 +8,12 @@ from irsim.lib.algorithm.kinematics import (
     differential_kinematics,
     omni_kinematics,
 )
-from irsim.lib.algorithm.usv_wamv import WAMV3DOF, usv_wamv_kinematics
 from irsim.lib.algorithm.rvo import reciprocal_vel_obs
 from irsim.lib.algorithm.social_force_model import (
     SocialForceModelBatch,
     social_force_model,
 )
+from irsim.lib.algorithm.usv_wamv import WAMV3DOF, usv_wamv_kinematics
 from irsim.lib.behavior.behavior import Behavior
 from irsim.lib.behavior.behavior_registry import (
     register_behavior,

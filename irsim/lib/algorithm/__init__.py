@@ -22,8 +22,8 @@ from .social_force_model import SocialForceModelBatch, social_force_model
 from .usv_wamv import WAMV3DOF, usv_wamv_kinematics
 
 __all__ = [
-    "SocialForceModelBatch",
     "WAMV3DOF",
+    "SocialForceModelBatch",
     "ackermann_kinematics",
     "cast_rays",
     "differential_kinematics",
