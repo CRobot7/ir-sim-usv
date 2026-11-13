@@ -1,0 +1,416 @@
+# Make Environment
+
+An IR-SIM simulation is created from a YAML scenario file with `irsim.make()` and driven by a short Python loop (`env.step()` → `env.render()` → `env.done()`). This page covers building the environment, the core loop, status control, and dynamic object management. For running several scenarios at once, see [Multiple environments](multiple_environments.md).
+
+## Python script and YAML configuration file
+
+To start the simulation, you need to create an environment. The environment is a container for all the objects in the simulation. It is also responsible for updating the state of the simulation at each time step.
+
+::::{tab-set}
+:::{tab-item} Python Script
+
+Create your environment with a simple Python script:
+
+```python
+import irsim
+
+env = irsim.make("basic_world.yaml")
+```
+The `make` function creates an environment from a configuration file. Supported parameters include:
+
+- **`world_name`** (str, optional): Path to the world YAML configuration file
+- **`projection`** (str, optional): Projection type ("3d" for 3D environment, None for 2D)
+- **`step_mode`** (`"internal"` or `"external"`, optional): Overrides
+  `world.step_mode` for this environment. If omitted, the YAML value is used.
+- **`display`** (bool): Whether to display the environment visualization (default: True)
+- **`save_ani`** (bool): Whether to save the simulation as an animation (default: False)
+- **`log_level`** (str): Logging level for the environment (default: "INFO")
+- **`log_file`** (str, optional): Path of this environment's log file (default: `None`, so file logging is disabled). Every environment owns its own console and optional file sinks, so creating a second environment does not change the first one's logging.
+- **`seed`** (int, optional): Seed for IR-SIM's project RNG. If provided,
+  random elements produced by IR-SIM become reproducible. If omitted/``None``,
+  a new unseeded generator is used (non-reproducible). Custom extensions using
+  ``np.random`` or Python ``random`` should either switch to IR-SIM's RNG or be
+  seeded separately.
+
+For more details, see the {py:class}`~irsim.env.env_base.EnvBase` class documentation.
+:::
+
+:::{tab-item} YAML Configuration
+
+Define a minimal running world in a YAML file (`basic_world.yaml`):
+
+```yaml
+world:
+  height: 10  # the height of the world (meters)
+  width: 10   # the width of the world (meters)
+  step_time: 0.1  # simulation time step (seconds) - 10Hz
+  sample_time: 0.1  # rendering frequency (seconds) - 10Hz
+  offset: [0, 0] # the offset of the world origin [x, y]
+  step_mode: 'internal' # state advancement: 'internal' or 'external'
+  control_mode: 'auto' # control mode: 'auto', 'keyboard'
+  collision_mode: 'stop' # collision behavior: 'stop', 'unobstructed', 'unobstructed_obstacles', 'contact'
+  gravity: 9.81 # contact mode physics: gravity, default friction, restitution and drive lag of objects
+  friction: 0.5
+  restitution: 0.0
+  drive_tau: 0.0
+  obstacle_map: null # path to obstacle map file (optional)
+
+robot:
+  kinematics: {name: diff}
+  shape: {name: circle, radius: 0.2}
+  state: [1, 1, 0]
+  goal: [9, 9, 0]
+  behavior: {name: dash}
+  plot:
+    show_trajectory: true
+    show_goal: true
+```
+
+The configuration file defines the world and the robot that the main loop advances from its start to its goal.
+:::
+
+:::{tab-item} Demonstration
+
+```{image} https://raw.githubusercontent.com/IR-SIM/ir-sim-gifs/main/make_environment/basic_loop.gif
+:alt: A single robot running the IR-SIM step, render, and done loop
+:width: 400px
+:align: center
+```
+:::
+::::
+
+## Important Parameters Explanation 
+
+### World Configuration
+
+- **`world`**: Main section that defines the simulation environment properties
+- **`height`** and **`width`**: Specify the size of the simulation world in meters
+- **`step_time`**: Controls simulation accuracy and speed (smaller = more accurate, slower)
+- **`sample_time`**: Controls rendering frequency (larger = faster simulation, less smooth visualization)
+- **`offset`**: Shifts the world coordinate system origin [x, y] in meters
+- **`step_mode`**: Determines who advances object states
+  - `'internal'`: IR-SIM integrates states from actions or configured behaviors
+  - `'external'`: External code supplies states; IR-SIM synchronizes derived data
+- **`control_mode`**: Determines how the simulation is controlled
+  - `'auto'`: Automatic simulation execution
+  - `'keyboard'`: Manual keyboard control
+- **`collision_mode`**: Defines collision detection behavior
+  - `'stop'`: Stop simulation when collision occurs (default)
+  - `'unobstructed'`: Ignore all collisions
+  - `'unobstructed_obstacles'`: Ignore only obstacle collisions
+  - `'contact'`: Resolve overlaps as rigid-body contacts with `mass`, `friction`, `inertia` and `restitution` instead of stopping, so robots push boxes, stall against heavy ones and turn them (see [Physical properties and contact mode](configure_robots_obstacles.md#physical-properties-and-contact-mode))
+- **`gravity`**, **`friction`**, **`restitution`**, **`drive_tau`**: Physics of the `contact` mode, set once for the world: gravity (m/s²), and the friction, bounciness and drive lag every object starts from unless it sets its own (see [Physical properties and contact mode](configure_robots_obstacles.md#physical-properties-and-contact-mode))
+- **`obstacle_map`**: Optional. Path to an obstacle map image, or a generator spec (e.g. `{ name: perlin, ... }`). See [Configure grid map](configure_grid_map).
+
+### Performance Considerations
+
+- **Smaller `step_time`**: More accurate physics but slower simulation
+- **Larger `sample_time`**: Faster simulation but less smooth visualization  
+- **World size**: Larger worlds require more computational resources
+
+```{tip}
+You can use `sample_time` to control the rendering frequency and accelerate the simulation speed. The default value of `sample_time` is the same as `step_time`.
+```
+
+For more detailed parameter information, see the [YAML Configuration](../yaml_config/configuration.md) reference.
+
+:::{tip}
+**Automatic Configuration Detection**: The default YAML configuration file has the same name as your Python script. For example, if you create a script named `test.py`, IR-SIM automatically looks for `test.yaml` in the same directory.
+
+```python
+import irsim
+
+# Automatically uses 'test.yaml' if this file is 'test.py'
+env = irsim.make()
+```
+
+This feature simplifies development by eliminating the need to specify configuration files explicitly.
+:::
+
+## Basic Simulation Loop
+
+After creating an environment, you'll typically run a simulation loop:
+
+```python
+import irsim
+
+env = irsim.make("config.yaml")
+
+# Main simulation loop
+for i in range(1000):
+    env.step()  # Update simulation state
+    env.render(0.05)  # Render with 0.05 second interval (20Hz)
+
+    if env.done():  # Check if simulation should end
+        break
+
+env.end()  # Clean up resources
+```
+
+### Core Methods Explained
+
+- **`env.step()`**: Advances the simulation by one time step
+- **`env.render(interval)`**: Updates the visualization with specified time interval between frames
+- **`env.done()`**: Returns `True` if simulation completion conditions are met
+- **`env.reset(random=False)`**: Restores objects to their initial states. With `random=True`, rebuilds the world from the cached YAML parse so any randomized elements (e.g. `distribution: random`, random shape generators) are re-sampled from the current RNG state. Use it together with `irsim.util.random.set_seed(seed)` for reproducible fresh scenes. The YAML file on disk is **not** re-read; to pick up on-disk edits, use `env.reload()` instead.
+- **`env.refresh()`**: Refreshes state-derived attributes (geometry, sensor readings, collision tree, and status) without advancing the simulation. Useful after mutating object states directly (e.g. `robot.set_state(...)`) when you need sensors and collisions brought up to date before the next `env.step()`.
+- **`env.reload(world_name=None)`**: Re-parses the YAML file (optionally a different one) and rebuilds world/objects.
+- **`env.get_msg()`**: Captures a dependency-free snapshot of the world.
+- **`env.receive_msg(...)`**: Applies external odometry to IR-SIM objects and refreshes their derived state.
+- **`env.end()`**: Properly closes the environment and releases resources
+- **`env.close()`**: Alias for `env.end()`, provided for [Gym](https://gymnasium.farama.org/)-style API compatibility
+
+::::{tip}
+Update order
+
+The environment advances all objects first, then updates all sensors. This two-phase update ensures sensors read the latest world state consistently. If you step objects manually, either pass `sensor_step=True` to `ObjectBase.step(...)` or call `obj.sensor_step()` after updating states.
+::::
+
+### Headless Mode for Batch Training
+
+Pass `headless=True` to run without any figure, window, or keyboard/mouse control. Environment creation is several times cheaper and nothing is left behind when an environment is discarded, which matters when a training loop creates many environments; `render()`, the drawing helpers, and `save_figure()` become no-ops so the same script runs unchanged:
+
+```python
+env = irsim.make("config.yaml", headless=True)
+```
+
+`disable_all_plot=True` is kept as an alias. To render offscreen while still saving animations or figures, use `display=False` instead. Offscreen rendering switches the process to the Agg backend only while no figure is open; once another environment has a window, the backend is left alone so that window keeps working. A displayed environment opens its window through the GUI backend Matplotlib finds, replacing the still-image backends of PyCharm SciView and Jupyter. When no GUI toolkit loads, as on a Linux Python without Tk, `irsim.make()` warns with the package to install. Figures and animations are saved under `figure/` and `animation/` next to the running script, or under the current working directory when there is no script, as in a REPL or notebook.
+
+### Internal and External Step Modes
+
+The default `internal` mode preserves the normal IR-SIM loop. Actions may be
+provided explicitly, or omitted so configured behaviors generate them:
+
+```python
+env = irsim.make("config.yaml")
+env.step(action=[1.0, 0.0], action_id=0)
+```
+
+Actions follow the usual single- and multi-agent conventions:
+
+- `env.step([1.0, 0.5])` applies one action (a list, tuple, or ndarray) to the first robot.
+- `env.step(action, action_id=2)` targets the object with id `2` (`obj.id`; robots are created first, so ids `0..n-1` are the robots). A name such as `"robot_2"` works as well.
+- `env.step([a0, a1, a2])` applies one action per robot in order, or from `action_id` onward.
+- `env.step(actions, action_id=[0, 3])` pairs each action with the given id.
+- `env.step({"robot_0": a0, "robot_3": a3})` takes a dict keyed by robot name.
+
+Surplus actions are dropped with a warning; an unknown id or name raises `ValueError`.
+
+In `external` mode, another simulator or system owns the state update. Supply
+the new state and velocity first, then call `env.step()` without an action:
+
+```python
+env = irsim.make("config.yaml", step_mode="external")
+robot = env.robot
+
+while not env.done():
+    state, velocity = external_system.read_robot()
+    robot.set_state(state)
+    robot.set_velocity(velocity)
+    env.step()
+```
+
+The external step does not execute IR-SIM kinematics or behaviors. It refreshes
+all object geometries from one state snapshot, rebuilds the collision index,
+updates sensors and status, records trajectories, and advances the world clock.
+Passing `action` to `env.step()` in this mode raises `ValueError`, preventing
+accidental mixing of internal and external state advancement.
+## Exchange simulation messages
+
+Use `env.get_msg()` when a controller, logger, bridge, or learning pipeline needs one consistent snapshot of the simulator. The returned {py:class}`~irsim.msg.WorldState` groups each object's data under conventional ROS topic names: `robot.odom` is a {py:class}`~irsim.msg.Odometry` message and `robot.scan` is its primary {py:class}`~irsim.msg.LaserScan` message.
+
+```python
+msg = env.get_msg()
+
+print(msg.header.seq)  # simulation step count
+print(msg.header.stamp)  # simulation time in seconds
+robot = msg.robots[0]
+
+print(robot.odom.pose.pose.position.x)
+print(robot.odom.twist.twist.linear.x)
+
+if robot.scan is not None:
+    print(robot.scan.ranges)
+
+payload = msg.to_dict()  # JSON-compatible lists and scalar values
+```
+
+Message types expose a stable logical `ros_type` hint, for example `robot.odom.ros_type == "nav_msgs/Odometry"`. Its slash form is retained for compatibility and does not select ROS 1. The bridge chooses the native ROS 1 or ROS 2 class and converts IR-SIM's floating-point timestamp and sequence number to the corresponding Header layout. The `scans` list contains every LiDAR reading, and `scan` aliases its first item as the primary reading.
+
+{py:class}`~irsim.msg.LaserScan` contains only the shared `sensor_msgs/LaserScan` data fields; when intensity data is unavailable, `intensities` is an empty array. Its angle metadata describes the nominal beam directions; when angle noise is enabled, the actual cast directions are jittered. Because IR-SIM evaluates all beams from one geometry snapshot, `time_increment` is zero; `scan_time` is the configured interval between scans. IR-SIM-specific measurements such as Cartesian target velocity, FMCW radial velocity, and validity remain available from `sensor.get_scan()` or `env.get_lidar_scan()`. By default `ranges` are the sensor's own finite values, `range_max` for a miss, so snapshots used for learning are unchanged; `env.get_msg(use_inf=True)` maps beams without a usable return per REP 117, as Gazebo publishes them: `+inf` when nothing came back within `range_max` and `-inf` when the return was inside `range_min`.
+
+In `collision_mode: 'contact'` each object state also carries the readings of its contact sensor: `contact_force`, one {py:class}`~irsim.msg.ContactState` per contact under `contacts` (partner, point, normal, depth and force), and `contact_time` / `air_time`.
+
+Odometry and scan messages use conventional `world`, `base_link`, and sensor frame names. A ROS bridge remains responsible for publishing the corresponding `/tf`, `/tf_static`, and `/clock` messages.
+
+Messages are point-in-time copies: later calls to `env.step()` or object setters do not mutate a message you already captured. The message classes are dependency-free and do not require ROS; a ROS bridge can map them to native ROS messages at its boundary.
+
+Use `env.receive_msg(...)` to drive IR-SIM from another simulator or a ROS bridge. It accepts a complete {py:class}`~irsim.msg.WorldState`, one {py:class}`~irsim.msg.ObjectState`, or an IR-SIM or native ROS {py:class}`~irsim.msg.Odometry`. A standalone odometry message updates the primary robot by default; select another local object by its stable name or IR-SIM object ID:
+
+```python
+external_odom = source_env.get_msg().robots[0].odom
+updated = env.receive_msg(external_odom, object_name="message_robot")
+assert updated == 1
+```
+
+For a `WorldState`, incoming objects are matched to local objects by name first and ID second. IR-SIM applies the planar pose and body-frame twist, while the receiving environment retains its own configuration, goals, scans, and simulation clock. By default, one call also refreshes geometry, locally simulated sensors, collisions, and arrival status. Pass `refresh=False` only when batching updates, then call `env.refresh()` once afterwards. All incoming updates are validated before any object is changed.
+
+A bridge can also reuse that conversion on its own: {py:meth}`~irsim.msg.Odometry.from_msg` adopts a native ROS odometry message as a validated IR-SIM one, and {py:meth}`~irsim.msg.Odometry.to_state_velocity` returns the `(state, velocity)` arrays it implies for a given object, without modifying that object. Both are the inverse of {py:meth}`~irsim.msg.Odometry.from_object`, so pose and twist survive a capture/apply round trip.
+
+The complete runnable example is available under `usage/25msg_world/`.
+
+## Environment Control and Status
+
+### Status Management
+
+```python
+import irsim
+
+env = irsim.make("config.yaml")
+
+# Check current status
+print(f"Current status: {env.status}")
+print(f"Current time: {env.time}")
+
+# Control simulation state
+env.pause()  # Pause the simulation
+env.resume()  # Resume the simulation
+
+# Simulation loop with status checking
+for i in range(50):
+    env.step()
+    env.render(0.05)
+
+    if i < 10:
+        env.pause()
+    elif i > 20 and i < 30:
+        env.resume()
+
+    if env.status == "Pause":
+        print("Environment is paused")
+
+    if env.done():
+        print("Simulation completed successfully")
+
+env.end()
+```
+
+### Runtime Status Values
+
+IR-SIM updates `env.status` as the simulation runs. The YAML `world.status` setting only supplies the initial display label; it does not pause, resume, or stop execution.
+
+- **`"Running"`**: The environment is running in auto control mode
+- **`"Running (keyboard)"`**: The environment is running in keyboard control mode
+- **`"Pause"`**: Simulation is paused
+- **`"Arrived"`**: All robots have arrived at their goals
+- **`"Collision"`**: A collision has occurred
+- **`"Pause (Debugging)"`**: Debugging mode (when `F5` key is pressed)
+- **`"Reset"`**: The environment is reset
+- **`"Reload"`**: The environment is reloaded
+- **`"Save Figure"`**: The figure is saved
+- **`"Quit"`**: The environment is quit
+
+
+## Configure Environment Title
+
+By default, the simulation time and status are shown in the environment title. You can customize this behavior by setting the `show_title` and customizing the title by `env.set_title()`.
+
+::::{tab-set}
+:::{tab-item} Custom Title Configuration
+
+```python
+import irsim
+
+env = irsim.make("config.yaml")
+
+# Set custom title
+env.set_title("Multi-Robot Navigation Simulation")
+
+# Update title dynamically
+for i in range(100):
+    env.step()
+
+    # Update title every 10 steps
+    if i % 10 == 0:
+        env.set_title(f"Simulation Step: {i}")
+
+    env.render(0.05)
+
+env.end()
+```
+:::
+
+:::{tab-item} Enable/Disable Title Display
+
+```yaml
+world:
+  height: 20
+  width: 20
+  control_mode: 'auto'
+  plot:
+    show_title: true    # Show title with time and status
+    show_axis: true     # Optional: show axis labels
+```
+:::
+::::
+
+
+## Dynamic Object Management
+
+In addition to defining objects in YAML configuration files, you can create and add objects programmatically at runtime. This is useful for spawning objects dynamically during simulation, such as generating random obstacles or adding robots on-the-fly.
+
+### Creating Objects Programmatically
+
+Use `env.create_robot()` and `env.create_obstacle()` to create objects with keyword arguments:
+
+```python
+import irsim
+
+env = irsim.make("empty_world.yaml")
+
+# Create a differential-drive robot
+robot = env.create_robot(
+    kinematics={"name": "diff"},
+    shape={"name": "circle", "radius": 0.2},
+    state=[1, 1, 0],
+    goal=[8, 8, 0],
+    name="robot_0",
+)
+
+# Create a static circular obstacle
+obstacle = env.create_obstacle(
+    shape={"name": "circle", "radius": 0.5},
+    state=[5, 5, 0],
+    name="obs_0",
+)
+```
+
+Common keyword arguments include:
+
+- **`kinematics`** (dict): Kinematics model, e.g. `{"name": "diff"}`, `{"name": "omni"}`, `{"name": "acker"}`. Omit or use `{"name": "static"}` for static objects.
+- **`shape`** (dict): Shape definition, e.g. `{"name": "circle", "radius": 0.5}` or `{"name": "polygon", "vertices": [[0,0],[1,0],[0,1]]}`.
+- **`state`** (list): Initial state `[x, y, theta, ...]`.
+- **`goal`** (list): Goal state `[x, y, theta, ...]`.
+- **`color`** (str): Object color (default varies by kinematics type).
+- **`name`** (str): Unique object name. Must not conflict with existing objects.
+- **`goal_threshold`** (float): Distance threshold for arrival detection (default: 0.1).
+
+For the full list of parameters, see the {py:class}`~irsim.world.object_base.ObjectBase` class documentation.
+
+### Adding Objects to the Environment
+
+After creating objects, add them to the environment with `env.add_object()` or `env.add_objects()`:
+
+```python
+# Add a single object
+env.add_object(robot)
+
+# Add multiple objects at once
+env.add_objects([obstacle])
+```
+
+Each object must have a unique name. Adding an object with a duplicate name raises a `ValueError`.
+
+## See also
+
+- [Multiple environments](multiple_environments.md): run several scenarios at once with isolated state, for comparison studies or reinforcement-learning training.

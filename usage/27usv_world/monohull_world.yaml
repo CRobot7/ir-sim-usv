@@ -1,0 +1,50 @@
+# Demo monohull: vessels/monohull.yaml hull.type + simple hydro.coeffs.
+# Compare with usv_world.py (catamaran) — same Fossen integrator, different yaml.
+world:
+  height: 50
+  width: 80
+  step_time: 0.05
+  sample_time: 0.05
+  offset: [0, 0]
+  control_mode: keyboard
+  collision_mode: stop
+  plot:
+    viewpoint: robot_0
+    grid: true
+    grid_interval: 5
+
+robot:
+  kinematics:
+    name: usv
+    vessel: monohull  # irsim/vessels/monohull.yaml
+  # Top-view from yaml hull.type: monohull (omit robot.shape).
+  state: [12, 12, 0, 0, 0, 0]
+  goal: [60, 40, 0]
+  vel_max: [40, 40]
+  vel_min: [0, 0]
+  plot:
+    show_trajectory: true
+    traj_width: 0.08
+    traj_alpha: 0.85
+    show_trail: false
+    obj_fill: false
+    obj_linewidth: 2.5
+    show_goal: true
+    show_arrow: true
+    arrow_length: 2.0
+
+obstacle:
+  - shape: {name: circle, radius: 1.5}
+    state: [30, 20, 0]
+  - shape: {name: circle, radius: 1.2}
+    state: [45, 12, 0]
+  - shape: {name: rectangle, length: 4.0, width: 1.5}
+    state: [35, 35, 0.4]
+  - shape: {name: circle, radius: 2.0}
+    state: [55, 28, 0]
+
+gui:
+  keyboard:
+    key_lv_max: 40.0
+    key_ang_max: 40.0
+    backend: mpl

@@ -1,0 +1,86 @@
+# WAM-V USV14 in IR-SIM.
+# Hydrodynamics: Klinger et al., IEEE JOE 2017,
+# "Control of an Unmanned Surface Vehicle With Uncertain Displacement and Drag"
+# (Tables I-III). Dual waterjets, command = [T_port, T_stbd] in Newtons.
+#
+# Body frame origin = CG (Table I LCG = 1.27 m from transom).
+# +x forward, +y to port. Lidar is at the CG.
+world:
+  height: 50
+  width: 80
+  step_time: 0.05
+  sample_time: 0.05
+  offset: [0, 0]
+  control_mode: keyboard
+  collision_mode: stop
+  wave:
+    # Douglas sea state 2 (smooth). Hs=0.6 m was sea state 3 (slight):
+    # about 6x the WAM-V draft, so linear FK yaw looked violent.
+    Hs: 0.20       # significant wave height [m]; omit world.wave for calm water
+    Tp: 5.0        # s; peak wavelength ~39 m >> L=4.3 m
+    heading: 0.0   # rad, 0 = +x
+    n_freq: 20
+    n_dir: 10
+    seed: 0
+  plot:
+    viewpoint: robot_0
+    grid: true
+    grid_interval: 5    # metres; major ticks on the axes
+    show_wave: true
+    wave_cmap: ocean
+    wave_alpha: 0.75
+    wave_resolution: 1.0
+
+robot:
+  kinematics:
+    name: usv
+    vessel: wamv      # irsim/vessels/wamv.yaml (omit robot.shape -> catamaran from yaml)
+    payload: 0.0      # kg add-on; 0 = empty 150 kg, max 130 kg
+    twj_max: 204.0    # per-jet thrust clip [N] (Klinger 2017); keep = vel_max
+    xudot_frac: 0.16  # surge added-mass fraction of -m
+  # Top-view compound is generated from vessels/wamv.yaml (hull.type: catamaran).
+  # Set robot.shape here to override.
+  state: [12, 12, 0, 0, 0, 0]  # [x, y, psi, u, v, r]; x,y,psi and u,v in m, m/s; r in rad/s
+  goal: [60, 40, 0]
+  # Action is waterjet force [N], NOT velocity.
+  # ir-sim reuses vel_max/vel_min as the generic clip on the command vector,
+  # which for kinematics: usv is [T_port, T_stbd]. Keep equal to twj_max.
+  vel_max: [204, 204]  # [T_port, T_stbd] max [N]
+  vel_min: [0, 0]      # jets cannot reverse
+  sensors:
+    - name: lidar2d
+      range_min: 0.2
+      range_max: 20.0
+      angle_range: 6.28318530718   # 360 deg
+      number: 180
+      noise: false
+      offset: [0, 0, 0]            # CG / LCG
+      plot:
+        alpha: 0.35
+  plot:
+    show_sensor: true   # false = hide lidar beams; sensor still runs
+    show_trajectory: true
+    traj_width: 0.12    # default is hull beam (~2.2 m) and looks like a blob
+    traj_alpha: 0.85
+    show_trail: false   # true draws historical hull boxes; keep false for path only
+    obj_fill: false     # outline only; easier to see heading on a small hull
+    obj_linewidth: 2.5
+    show_goal: true
+    show_arrow: true
+    arrow_length: 3.0   # metres, body +x; color follows the hull
+
+obstacle:
+  - shape: {name: circle, radius: 1.5}
+    state: [30, 20, 0]
+  - shape: {name: circle, radius: 1.2}
+    state: [45, 12, 0]
+  - shape: {name: rectangle, length: 4.0, width: 1.5}
+    state: [35, 35, 0.4]
+  - shape: {name: circle, radius: 2.0}
+    state: [55, 28, 0]
+
+gui:
+  keyboard:
+    key_lv_max: 204.0   # W: common surge thrust [N]; same unit as vel_max
+    key_ang_max: 204.0  # A/D: scaled into differential thrust [N]
+    backend: mpl

@@ -1,0 +1,71 @@
+# WAM-V 16 vessel spec for ir-sim (AC-IQN / RFAL numbers).
+#
+# Copy this file and replace numbers to add another hull. Same Fossen 3DOF
+# integrator as wamv.yaml; only these coefficients change.
+# hydro.coeffs is a full Fossen set (no klinger2017 recipe).
+
+name: wamv16
+kinematics: fossen3dof
+
+geometry:
+  L: 5.0                  # overall length [m]
+  LWL: 4.5
+  BOA: 2.5                # beam overall [m]
+  BWL: 2.5
+  B: 2.0                  # pontoon-center / waterjet lever [m]
+  B_hull: 0.5             # single-pontoon beam [m]
+  LCG: 2.5                # CG from transom [m]; body origin = CG
+  AWP: 2.60               # waterplane area [m^2]
+  T_aft_lightship: 0.15
+  T_mid_lightship: 0.15
+  nabla_lightship: 0.39
+  rho: 1025.0
+  Cd: 1.1
+
+load:
+  M_slick: 400.0          # fully loaded WAM-V 16 [kg]
+  M_lightship: 400.0
+  M_full_paper: 400.0
+  P_full: 0.0
+
+hydro:
+  # AC-IQN robot.py (SNAME-style signs mapped to ir-sim FossenCoeffs):
+  # xDotU=20, xU=-100, xUU=-150, yV=-100, yVV=-150, nR=-980, nRR=-950, nDotR=-980
+  coeffs:
+    m: 400.0
+    I_z: 450.0
+    T: 0.15
+    X_u: 100.0
+    X_uu: 150.0
+    X_udot: 20.0
+    Y_vdot: 0.0
+    Y_rdot: 0.0
+    N_vdot: 0.0
+    N_rdot: -980.0
+    Y_vv: -150.0
+    Y_vr: 0.0
+    Y_rv: 0.0
+    Y_rr: 0.0
+    N_vv: 0.0
+    N_vr: 0.0
+    N_rv: 0.0
+    N_rr: -950.0
+    Y_v: -100.0
+    Y_r: 0.0
+    N_v: 0.0
+    N_r: -980.0
+
+hull:
+  type: catamaran
+  sample_points:
+    cg: [0.0, 0.0]
+    bow: [2.5, 0.0]
+    stern: [-2.5, 0.0]
+    port: [0.0, 1.0]
+    stbd: [0.0, -1.0]
+  A_z: 2.60
+
+actuators:
+  type: dual_waterjet
+  twj_min: -500.0         # astern thrust allowed (AC-IQN clip)
+  twj_max: 1000.0

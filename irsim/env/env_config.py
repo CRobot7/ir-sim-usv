@@ -1,0 +1,238 @@
+from __future__ import annotations
+
+import difflib
+from operator import attrgetter
+from typing import TYPE_CHECKING, Any
+
+import yaml
+
+from irsim.util.util import file_check
+from irsim.world import World
+from irsim.world.object_factory import ObjectFactory
+from irsim.world.object_group import ObjectGroup
+
+from .env_plot import EnvPlot
+
+if TYPE_CHECKING:
+    from irsim.config.env_param import EnvParam
+    from irsim.config.world_param import WorldParam
+
+
+class EnvConfig:
+    """
+    Environment configuration loader and builder from YAML.
+
+    Responsibilities:
+        - Resolve and parse a YAML configuration into structured dictionaries
+          (basic categories: ``world``, ``gui``, ``robot``, ``obstacle``)
+        - Construct ``World`` and object collections and produce an ``EnvPlot``
+        - Support reloading the YAML and updating the scene in the same figure
+    """
+
+    def __init__(
+        self,
+        world_name: str | None,
+        env_param_instance: EnvParam | None = None,
+        world_param_instance: WorldParam | None = None,
+        step_mode: str | None = None,
+        disable_all_plot: bool = False,
+    ) -> None:
+        self.object_factory = ObjectFactory()
+        self._env_param = env_param_instance
+        self._world_param = world_param_instance
+        self._step_mode = step_mode
+        self._disable_all_plot = disable_all_plot
+        self.load_yaml(world_name)
+
+    def load_yaml(self, world_name: str | None = None) -> None:
+        """Parse the YAML file and populate internal configuration state.
+
+        Args:
+            world_name: Path or name of the YAML file. If ``None``, will try to
+                resolve via ``file_check`` and fall back to empty/defaults.
+
+        """
+
+        self.world_name = world_name
+        self.world_file_path = file_check(world_name)
+
+        self._kwargs_parse: dict[str, Any] = {
+            "world": {},
+            "gui": {},
+            "robot": None,
+            "obstacle": None,
+            # Read from the YAML and handed back untouched, so a scenario can
+            # carry the values a user's own code needs beside the ones IR-SIM
+            # interprets.
+            "custom": {},
+        }
+
+        self.world_file_path = self.world_file_path
+        self.world_name = world_name
+
+        if self.world_file_path is not None:
+            with open(self.world_file_path, encoding="utf-8") as file:
+                com_list = yaml.safe_load(file)
+
+                # The blocks may be nested under an optional 'irsim' key when
+                # the file is shared with another simulator.
+                if isinstance(com_list.get("irsim"), dict):
+                    com_list = com_list["irsim"]
+
+                for key in com_list:
+                    if key in self._kwargs_parse:
+                        self._kwargs_parse[key] = com_list[key]
+                    else:
+                        matches = difflib.get_close_matches(
+                            key, self._kwargs_parse.keys(), n=3, cutoff=0.6
+                        )
+                        if matches:
+                            suggestion = f". Did you mean: {', '.join(matches)}?"
+                        else:
+                            suggestion = f". Valid keys: {', '.join(sorted(self._kwargs_parse.keys()))}"
+                        self.logger.error(
+                            f"Invalid key: '{key}' in {self.world_name} file!{suggestion}"
+                        )
+                        raise KeyError(key)
+
+        else:
+            self.logger.error(
+                f"{self.world_name} YAML File not found!, using default world config as alternative."
+            )
+
+        if self._step_mode is not None:
+            self._kwargs_parse["world"]["step_mode"] = self._step_mode
+
+    def initialize_objects(self) -> Any:
+        """Construct world, objects and plot from the current parsed config.
+
+        Returns:
+            Tuple: ``(world, objects, env_plot, robot_collection, obstacle_collection, map_collection)``
+
+        Notes:
+            - Caches the created ``EnvPlot`` and ``objects`` internally for use
+              during in-place reloads.
+        """
+
+        world, objects, robots, obstacles, maps, groups = self._build_scene()
+
+        # No figure at all when plotting is disabled: nothing would draw on it.
+        self._env_plot = None if self._disable_all_plot else EnvPlot(world, objects)
+        self._objects = objects
+
+        return world, objects, self._env_plot, robots, obstacles, maps, groups
+
+    def reload_objects(self) -> Any:
+        """Rebuild world/objects and update the current figure in-place.
+
+        This method reuses the existing ``EnvPlot`` instance and its figure/axes,
+        clearing old artists and re-initializing with the new world and objects.
+
+        Returns:
+            Tuple: ``(world, objects, env_plot, robot_collection, obstacle_collection, map_collection)``
+        """
+
+        world, objects, robots, obstacles, maps, groups = self._build_scene()
+
+        if self._env_plot is not None:
+            self._env_plot.clear_components("all", self._objects)
+            self._env_plot._init_plot(world, objects)
+
+        # Refresh cached objects so subsequent reloads clear the right set
+        self._objects = objects
+
+        return world, objects, self._env_plot, robots, obstacles, maps, groups
+
+    def reload_yaml_objects(self, world_name) -> Any:
+        """Reload YAML and update the scene using the existing figure.
+
+        This re-parses the YAML and then calls :py:meth:`reload_objects` to
+        apply the new configuration without creating a new figure window.
+
+        Args:
+            world_name: Optional path/name of the YAML to reload. If ``None``,
+                uses the previously resolved YAML file.
+
+        Returns:
+            Tuple: ``(world, objects, env_plot, robot_collection, obstacle_collection, map_collection)``
+        """
+
+        self.load_yaml(world_name if world_name is not None else self.world_name)
+
+        return self.reload_objects()
+
+    def _build_scene(self) -> Any:
+        """Create the world, its objects, and their groups from the parsed config.
+
+        Shared by :py:meth:`initialize_objects` and :py:meth:`reload_objects`,
+        which differ only in how the resulting scene is drawn.
+
+        Returns:
+            Tuple: ``(world, objects, robot_collection, obstacle_collection,
+            map_collection, object_groups)``
+        """
+
+        world = World(
+            self.world_name,
+            world_param_instance=self._world_param,
+            **self.parse["world"],
+        )
+        self.object_factory.world = world
+
+        robot_collection = self.object_factory.create_from_parse(
+            self.parse["robot"], "robot"
+        )
+        obstacle_collection = self.object_factory.create_from_parse(
+            self.parse["obstacle"],
+            "obstacle",
+            group_start_index=(
+                max((obj.group for obj in robot_collection), default=-1) + 1
+            ),
+        )
+        map_collection = self.object_factory.create_from_map(
+            world.obstacle_positions,
+            world.reso,
+            grid_map=world.grid_map,
+            world_offset=world.offset,
+        )
+
+        objects = robot_collection + obstacle_collection + map_collection
+        objects.sort(key=attrgetter("id"))
+
+        # Initialize groups (unique and inclusive). Map objects are static
+        # scenery rather than agents, so they never join a group: the map's
+        # default ``group`` of 0 would otherwise make it a member of the first
+        # robot group and an agent of that group's behavior (orca, sfm).
+        grouped = [obj for obj in objects if obj.shape != "map"]
+        group_ids = sorted({obj.group for obj in grouped})
+        object_groups = [
+            ObjectGroup([obj for obj in grouped if obj.group == gid], gid)
+            for gid in group_ids
+        ]
+
+        return (
+            world,
+            objects,
+            robot_collection,
+            obstacle_collection,
+            map_collection,
+            object_groups,
+        )
+
+    @property
+    def parse(self) -> dict[str, Any]:
+        """
+        The parsed kwargs from the yaml file.
+        """
+        return self._kwargs_parse
+
+    @property
+    def logger(self):
+        """
+        Get the logger of the env_param.
+        """
+        if self._env_param is not None:
+            return self._env_param.logger
+        from irsim.config import env_param
+
+        return env_param.logger

@@ -1,0 +1,591 @@
+from math import cos, pi, sin
+from typing import TYPE_CHECKING
+
+import matplotlib.transforms as mtransforms
+import numpy as np
+import shapely
+from matplotlib.collections import LineCollection
+from mpl_toolkits.mplot3d import Axes3D
+from mpl_toolkits.mplot3d.art3d import Line3DCollection
+from shapely import MultiLineString
+
+from irsim.config import palette_param
+from irsim.lib.algorithm.ray_casting_2d import cast_rays
+from irsim.util.random import rng
+from irsim.util.util import (
+    ClipTo2Pi,
+    geometry_transform,
+    transform_point_with_state,
+)
+
+if TYPE_CHECKING:
+    from irsim.world.object_base import ObjectBase
+
+
+class Lidar2D:
+    """
+    Simulates a 2D Lidar sensor for detecting obstacles in the environment.
+
+    Args:
+        state (np.ndarray): Initial state of the sensor.
+        obj_id (int): ID of the associated object.
+        range_min (float): Minimum detection range.
+        range_max (float): Maximum detection range.
+        angle_range (float): Total angle range of the sensor.
+        number (int): Number of laser beams.
+        scan_time (float): Time taken for one complete scan.
+        noise (bool): Whether noise is added to measurements.
+        std (float): Standard deviation for range noise.
+        angle_std (float): Standard deviation for angle noise.
+        offset (list): Offset of the sensor from the object's position.
+        alpha (float): Transparency for plotting.
+        has_velocity (bool): Whether the sensor measures velocity.
+        **kwargs: Additional arguments.
+            color (str): Color of the sensor.
+
+    Attr:
+        - sensor_type (str): Type of sensor ("lidar2d"). Default is "lidar2d".
+        - range_min (float): Minimum detection range in meters. Default is 0. A return closer than this is reported at ``range_min``: the beam counts as blocked but carries no measurement.
+        - range_max (float): Maximum detection range in meters. Default is 10.
+        - angle_range (float): Total angle range of the sensor in radians. Default is pi. Clipped to [0, 2*pi].
+        - angle_min (float): Starting angle of the sensor's scan relative to the forward direction in radians. Calculated as -angle_range / 2.
+        - angle_max (float): Ending angle of the sensor's scan relative to the forward direction in radians. Calculated as angle_range / 2.
+        - angle_inc (float): Angular increment between each laser beam in radians. Calculated as angle_range / (number - 1) when multiple beams are used.
+          A single-beam sensor has no increment and points straight ahead.
+        - number (int): Number of laser beams. Default is 100.
+        - scan_time (float): Time taken to complete one full scan in seconds. Default is 0.1.
+        - noise (bool): Whether to add noise to the measurements. Default is False.
+        - std (float): Standard deviation for range noise in meters. Effective only if `noise` is True. Default is 0.2.
+        - angle_std (float): Standard deviation of each beam's direction in radians, applied when `noise` is True. Default is 0, which keeps the directions exact.
+        - offset (np.ndarray): Offset of the sensor relative to the object's position, formatted as [x, y, theta]. Default is [0, 0, 0].
+        - lidar_origin (np.ndarray): Origin position of the Lidar sensor, considering offset and the object's state.
+        - alpha (float): Transparency level for plotting the laser beams. Default is 0.3.
+        - has_velocity (bool): Whether the sensor measures the velocity of detected points. Default is False.
+        - velocity (np.ndarray): Velocity data for each laser beam, formatted as (2, number) array. Effective only if `has_velocity` is True. Initialized to zeros.
+        - time_inc (float): Time increment for each scan, simulating the sensor's time resolution. Default is 5e-4.
+        - range_data (np.ndarray): Array storing range data for each laser beam. Initialized to `range_max` for all beams.
+        - valid (np.ndarray): Boolean per beam, True for a usable return: a hit whose range lies inside ``[range_min, range_max]``. Misses and returns inside the blind zone are False (the latter read ``range_min``).
+        - angle_list (np.ndarray): Array of angles corresponding to each laser beam, distributed linearly from `angle_min` to `angle_max`.
+        - color (str): Color of the sensor's representation in visualizations. Default is ``palette_param.lidar``.
+        - obj_id (int): ID of the associated object, used to differentiate between multiple sensors or objects in the environment. Default is 0.
+        - plot_patch_list (list): List storing plot patches (e.g., line collections) for visualization purposes.
+        - plot_line_list (list): List storing plot lines for visualization purposes.
+        - plot_text_list (list): List storing plot text elements for visualization purposes.
+    """
+
+    def __init__(
+        self,
+        state: np.ndarray | None = None,
+        obj_id: int = 0,
+        range_min: float = 0,
+        range_max: float = 10,
+        angle_range: float = pi,
+        number: int = 100,
+        scan_time: float = 0.1,
+        noise: bool = False,
+        std: float = 0.2,
+        angle_std: float = 0.0,
+        offset: list[float] | None = None,
+        alpha: float = 0.3,
+        has_velocity: bool = False,
+        **kwargs,
+    ) -> None:
+        """
+        Initialize the Lidar2D sensor.
+
+
+        """
+        if offset is None:
+            offset = [0, 0, 0]
+        self.sensor_type = "lidar2d"
+
+        self.range_min = range_min
+        self.range_max = range_max
+
+        self.angle_range = ClipTo2Pi(angle_range)
+        self.angle_min = -self.angle_range / 2 if number > 1 else 0.0
+        self.angle_max = self.angle_range / 2 if number > 1 else 0.0
+        self.angle_inc = self.angle_range / (number - 1) if number > 1 else 0.0
+
+        self.number = number
+        self.scan_time = scan_time
+        self.noise = noise
+        self.std = std
+        self.angle_std = angle_std
+        self.offset = np.c_[offset]
+
+        # Visualization params may be given under a `plot:` sub-dict
+        # (preferred) or as flat top-level keys (backward compatible).
+        _plot = kwargs.get("plot") or {}
+        self._plot_cfg = _plot
+        self.alpha = _plot.get("alpha", alpha)
+        self.has_velocity = has_velocity
+        self.velocity = np.zeros((2, number))
+
+        # All beams use one instantaneous geometry snapshot.
+        self.time_inc = 0.0
+        self.range_data = range_max * np.ones(number)
+        self.valid = np.zeros(number, dtype=bool)
+
+        self.angle_list = np.linspace(self.angle_min, self.angle_max, num=number)
+        self._cast_angles = self.angle_list
+
+        self._state = state
+        self.init_geometry(self._state)
+
+        self.color = _plot.get("color", kwargs.get("color", palette_param.lidar))
+
+        self.obj_id = obj_id
+
+        # Parent object reference (set by ObjectBase or SensorFactory)
+        self.parent: ObjectBase | None = None
+
+        self.plot_patch_list = []
+        self.plot_line_list = []
+        self.plot_text_list = []
+
+    @property
+    def _env_param(self):
+        """Access env_param via parent's env instance if available."""
+        if self.parent is not None and self.parent._env is not None:
+            return self.parent._env._env_param
+        from irsim.config import env_param
+
+        return env_param
+
+    def init_geometry(self, state):
+        """
+        Initialize the Lidar's scanning geometry.
+
+        Args:
+            state (np.ndarray): Current state of the sensor.
+        """
+        self.origin_state = self.offset
+        self._original_geometry = self._beam_geometry(self.angle_list)
+        self.lidar_origin = transform_point_with_state(self.offset, state)
+
+        self._geometry = geometry_transform(self._original_geometry, state)
+        self._init_geometry = self._geometry
+
+    def _beam_geometry(self, angles: np.ndarray) -> MultiLineString:
+        """Max-range beams along ``angles``, in the body frame of the carrier.
+
+        Each beam runs from the sensor origin to ``range_max``; the mounting
+        ``offset`` places the bundle on the carrier.
+
+        Returns:
+            MultiLineString: One segment per beam.
+        """
+        angles = np.asarray(angles, dtype=float)
+        ends = self.range_max * np.column_stack((np.cos(angles), np.sin(angles)))
+        coordinates = np.stack((np.zeros_like(ends), ends), axis=1)
+        geometry = shapely.multilinestrings(shapely.linestrings(coordinates))
+        return geometry_transform(geometry, self.offset)
+
+    def step(self, state: np.ndarray) -> None:
+        """
+        Update the Lidar's state and compute per-beam ranges via ray casting.
+
+        Each beam is intersected analytically against the boundary segments of
+        nearby obstacles (polygons, linestrings, and map segments); the nearest
+        hit along the beam is its range. This reproduces the previous geometry
+        ``difference`` result to floating-point precision when the sensor origin
+        is in free space, while avoiding the expensive GEOS overlay.
+
+        Args:
+            state (np.ndarray): New state of the sensor.
+        """
+        self._state = state
+
+        lidar_geometry = self._world_geometry(state)
+        detected_objects = self._get_detected_objects(lidar_geometry)
+
+        ranges, hit_object_indices, origin, directions = cast_rays(
+            lidar_geometry,
+            detected_objects,
+            self.range_max,
+        )
+
+        hits = hit_object_indices >= 0
+
+        if self.noise and hits.any():
+            ranges = np.array(ranges, dtype=float, copy=True)
+            ranges[hits] += rng.normal(0, self.std, int(hits.sum()))
+
+        in_band = (ranges >= self.range_min) & (ranges <= self.range_max)
+        self.valid[:] = hits & in_band
+        self.range_data[:] = np.clip(ranges, self.range_min, self.range_max)
+
+        self._rebuild_scan_geometry(origin, directions)
+
+        if self.has_velocity:
+            self._assign_velocities(hit_object_indices, detected_objects)
+
+    def _get_detected_objects(self, lidar_geometry) -> list:
+        """Select objects that may produce a return for this lidar geometry.
+
+        This is the environment-facing broad-phase operation. It owns access to
+        the scene's complete object list and geometry tree, and filters objects
+        that sensors must ignore. Exact boundary intersections remain in the
+        geometry-only ray-casting operation.
+        """
+        objects = self._env_param.objects
+        geometry_tree = self._env_param.GeometryTree
+        if geometry_tree is None:
+            return []
+
+        detected_objects = []
+        for object_index in geometry_tree.query(lidar_geometry):
+            obj = objects[object_index]
+            if obj._id == self.obj_id or not obj._geometry_valid or obj.unobstructed:
+                continue
+            detected_objects.append(obj)
+        return detected_objects
+
+    def _world_geometry(self, state: np.ndarray) -> MultiLineString:
+        """Build the max-range beam geometry in world coordinates.
+
+        With ``noise`` on and ``angle_std > 0`` every beam is cast slightly
+        off its nominal direction; the scan still reports the nominal angles,
+        as a real sensor does.
+        """
+        beams = self._original_geometry
+        self._cast_angles = self.angle_list
+        if self.noise and self.angle_std > 0:
+            jitter = rng.normal(0, self.angle_std, self.number)
+            self._cast_angles = self.angle_list + jitter
+            beams = self._beam_geometry(self._cast_angles)
+        world_geometry = geometry_transform(beams, state)
+        self.lidar_origin = transform_point_with_state(self.offset, state)
+        # Use the beam geometry's exact start coordinate. Computing the same
+        # point through a separate transform can differ by one floating-point
+        # step across platforms, which breaks exact GEOS origin predicates.
+        self.lidar_origin[:2, 0] = shapely.get_coordinates(world_geometry)[0]
+        return world_geometry
+
+    @property
+    def cast_angles(self) -> np.ndarray:
+        """Per-beam angles the last scan was cast along, in the sensor frame.
+
+        Equal to ``angle_list`` unless angle noise is on, in which case each
+        beam carries that step's jitter. Consumers that pair a measured range
+        with a direction (fog reveal, drawn beams) use these; the scan itself
+        reports the nominal ``angle_list``, as a real sensor does.
+        """
+        return self._cast_angles
+
+    def _rebuild_scan_geometry(
+        self, origin: np.ndarray, directions: np.ndarray
+    ) -> None:
+        """Rebuild each clipped beam from its origin and measured range."""
+        # Kept for consumers that need the directions the beams were actually
+        # cast along (they differ from the nominal angles under angle noise).
+        self._beam_origin = origin
+        self._beam_directions = directions
+        endpoints = origin + self.range_data[:, None] * directions
+        origins = np.broadcast_to(origin, endpoints.shape)
+        beam_coordinates = np.stack([origins, endpoints], axis=1)
+        self._geometry = shapely.multilinestrings(
+            shapely.linestrings(beam_coordinates),
+        )
+
+    def _assign_velocities(
+        self,
+        hit_object_indices: np.ndarray,
+        detected_objects,
+    ) -> None:
+        """Assign velocity when ray casting reports an actual object hit.
+
+        ``hit_object_indices`` refers to ``detected_objects`` and distinguishes
+        a hit from a max-range miss, so no range margin is needed near
+        ``range_max``.
+        """
+        self.velocity[:] = 0.0
+        for beam_index in np.flatnonzero(hit_object_indices >= 0):
+            object_velocity = detected_objects[
+                hit_object_indices[beam_index]
+            ].velocity_xy
+            self.velocity[:, beam_index : beam_index + 1] = object_velocity
+
+    def get_scan(self):
+        """
+        Get the 2D lidar scan data. refer to the ros topic scan: http://docs.ros.org/en/melodic/api/sensor_msgs/html/msg/LaserScan.html
+
+        Returns:
+            dict: Scan data including angles, ranges, and velocities.
+        """
+        scan_data = {}
+        scan_data["angle_min"] = self.angle_min
+        scan_data["angle_max"] = self.angle_max
+        scan_data["angle_increment"] = self.angle_inc
+        scan_data["time_increment"] = self.time_inc
+        scan_data["scan_time"] = self.scan_time
+        scan_data["range_min"] = self.range_min
+        scan_data["range_max"] = self.range_max
+        scan_data["ranges"] = self.range_data
+        scan_data["intensities"] = None
+        scan_data["velocity"] = self.velocity
+        scan_data["valid"] = self.valid
+
+        return scan_data
+
+    def get_points(self):
+        """
+        Convert scan data to a point cloud.
+
+        Returns:
+            np.ndarray: Point cloud (2xN).
+        """
+        return self.scan_to_pointcloud()
+
+    def get_offset(self):
+        """
+        Get the sensor's offset.
+
+        Returns:
+            list: Offset as a list.
+        """
+        return np.squeeze(self.offset).tolist()
+
+    def plot(self, ax, state: np.ndarray | None = None, **kwargs):
+        """
+        Plot the Lidar's detected lines on a given axis.
+        """
+        if state is None:
+            state = self.state
+
+        self._plot(ax, state, **kwargs)
+
+    def _init_plot(self, ax, **kwargs):
+        """
+        Initialize the plot for the Lidar.
+        """
+        self._plot(ax, self.origin_state, **kwargs)
+
+    @property
+    def state(self) -> np.ndarray:
+        """
+        Get the current state of the lidar sensor.
+
+        Returns:
+            np.ndarray: Current state of the sensor.
+        """
+        return self._state
+
+    def _plot(self, ax, state, **kwargs):
+        """
+        Plot the Lidar's detected lines using the specified state for positioning.
+        Creates line segments in local coordinates and applies transforms to position them.
+
+        Args:
+            ax: Matplotlib axis.
+            state: State vector [x, y, theta, ...] defining lidar position and orientation.
+            **kwargs: Plotting options.
+        """
+        lines = []
+
+        if isinstance(ax, Axes3D):
+            # For 3D plotting, calculate actual world coordinates since transforms don't work the same way
+            if state is not None and len(state) > 0:
+                # Calculate lidar position based on object state and sensor offset
+                lidar_x = self.lidar_origin[0, 0]
+                lidar_y = self.lidar_origin[1, 0]
+                lidar_theta = (
+                    self.lidar_origin[2, 0] if self.lidar_origin.shape[0] > 2 else 0
+                )
+            else:
+                lidar_x, lidar_y, lidar_theta = 0, 0, 0
+
+            # Create line segments in world coordinates for 3D
+            for i in range(self.number):
+                x_local = self.range_data[i] * cos(self.angle_list[i])
+                y_local = self.range_data[i] * sin(self.angle_list[i])
+
+                # Transform to world coordinates
+                x_world = (
+                    lidar_x + x_local * cos(lidar_theta) - y_local * sin(lidar_theta)
+                )
+                y_world = (
+                    lidar_y + x_local * sin(lidar_theta) + y_local * cos(lidar_theta)
+                )
+
+                start_point = np.array([lidar_x, lidar_y, 0])
+                end_point = np.array([x_world, y_world, 0])
+                segment = [start_point, end_point]
+                lines.append(segment)
+
+            self.laser_LineCollection = Line3DCollection(
+                lines, linewidths=1, colors=self.color, alpha=self.alpha, zorder=2
+            )
+            ax.add_collection3d(self.laser_LineCollection)
+        else:
+            # For 2D plotting, create line segments in local coordinates and use transforms
+            for i in range(self.number):
+                x = self.range_data[i] * cos(self.angle_list[i])
+                y = self.range_data[i] * sin(self.angle_list[i])
+                segment = [np.array([0, 0]), np.array([x, y])]
+                lines.append(segment)
+
+            self.laser_LineCollection = LineCollection(
+                lines, linewidths=1, colors=self.color, alpha=self.alpha, zorder=2
+            )
+            ax.add_collection(self.laser_LineCollection)
+
+            # Apply transform for 2D case - use provided state for positioning
+            if state is not None and len(state) > 0:
+                lidar_x = self.lidar_origin[0, 0]
+                lidar_y = self.lidar_origin[1, 0]
+                lidar_theta = (
+                    self.lidar_origin[2, 0] if self.lidar_origin.shape[0] > 2 else 0
+                )
+
+                # Create transform: rotate by lidar orientation, then translate to lidar position
+                trans = (
+                    mtransforms.Affine2D()
+                    .rotate(lidar_theta)
+                    .translate(lidar_x, lidar_y)
+                    + ax.transData
+                )
+                self.laser_LineCollection.set_transform(trans)
+
+        self.plot_patch_list.append(self.laser_LineCollection)
+
+    def _step_plot(self):
+        """
+        Update the lidar visualization using matplotlib transforms based on current state.
+        Creates line segments in local coordinates and applies transform to position them.
+        """
+        if not hasattr(self, "laser_LineCollection"):
+            return
+
+        ax = self.laser_LineCollection.axes
+        lines = []
+
+        if ax is None:
+            return
+
+        if isinstance(ax, Axes3D):
+            # For 3D plotting, calculate actual world coordinates
+            lidar_x = self.lidar_origin[0, 0]
+            lidar_y = self.lidar_origin[1, 0]
+            lidar_theta = (
+                self.lidar_origin[2, 0] if self.lidar_origin.shape[0] > 2 else 0
+            )
+
+            # Create line segments in world coordinates for 3D
+            for i in range(self.number):
+                x_local = self.range_data[i] * cos(self.angle_list[i])
+                y_local = self.range_data[i] * sin(self.angle_list[i])
+
+                # Transform to world coordinates
+                x_world = (
+                    lidar_x + x_local * cos(lidar_theta) - y_local * sin(lidar_theta)
+                )
+                y_world = (
+                    lidar_y + x_local * sin(lidar_theta) + y_local * cos(lidar_theta)
+                )
+
+                start_point = np.array([lidar_x, lidar_y, 0])
+                end_point = np.array([x_world, y_world, 0])
+                segment = [start_point, end_point]
+                lines.append(segment)
+        else:
+            # For 2D plotting, create line segments in local coordinates
+            for i in range(self.number):
+                x = self.range_data[i] * cos(self.angle_list[i])
+                y = self.range_data[i] * sin(self.angle_list[i])
+                segment = [np.array([0, 0]), np.array([x, y])]
+                lines.append(segment)
+
+        # Update line segments
+        self.laser_LineCollection.set_segments(lines)
+
+        # Apply transform to position the LineCollection based on current lidar origin (2D only)
+        if not isinstance(ax, Axes3D):  # 2D case
+            lidar_x = self.lidar_origin[0, 0]
+            lidar_y = self.lidar_origin[1, 0]
+            lidar_theta = (
+                self.lidar_origin[2, 0] if self.lidar_origin.shape[0] > 2 else 0
+            )
+
+            # Create transform: rotate by lidar orientation, then translate to lidar position
+            trans = (
+                mtransforms.Affine2D().rotate(lidar_theta).translate(lidar_x, lidar_y)
+                + ax.transData
+            )
+            self.laser_LineCollection.set_transform(trans)
+
+    def step_plot(self):
+        """
+        Public method to update the lidar visualization, calls _step_plot.
+        """
+        self._step_plot()
+
+    def set_laser_color(
+        self,
+        laser_indices,
+        laser_color: str | None = None,
+        alpha: float = 0.3,
+    ):
+        """
+        Set a specific color of the selected lasers.
+
+        Args:
+            laser_indices (list): The indices of the lasers to set the color.
+            laser_color (str): The color to set the selected lasers. Default is ``palette_param.laser_highlight``.
+            alpha (float): The transparency of the lasers. Default is 0.3.
+        """
+
+        if laser_color is None:
+            laser_color = palette_param.laser_highlight
+        current_color = [self.color] * self.number
+        current_alpha = [self.alpha] * self.number
+
+        for index in laser_indices:
+            if index < self.number:
+                current_color[index] = laser_color
+                current_alpha[index] = alpha
+
+        self.laser_LineCollection.set_color(current_color)
+        self.laser_LineCollection.set_alpha(current_alpha)
+
+    def plot_clear(self):
+        """
+        Clear the plot elements from the axis.
+        """
+        [patch.remove() for patch in self.plot_patch_list]
+        [line.pop(0).remove() for line in self.plot_line_list]
+        [text.remove() for text in self.plot_text_list]
+
+        self.plot_patch_list = []
+        self.plot_line_list = []
+        self.plot_text_list = []
+
+    def scan_to_pointcloud(self):
+        """
+        Convert the Lidar scan data to a point cloud.
+
+        Only beams with a usable return (``valid``) become points, at their
+        nominal angles; misses, returns inside the blind zone and returns
+        pushed out of band by noise are left out.
+
+        Returns:
+            np.ndarray: Point cloud (2xN), or ``None`` when no beam is valid.
+        """
+        point_cloud = []
+
+        ranges = self.range_data
+        angles = np.linspace(self.angle_min, self.angle_max, len(ranges))
+
+        for i in range(len(ranges)):
+            scan_range = ranges[i]
+            angle = angles[i]
+
+            if self.valid[i] and scan_range < (self.range_max - 0.02):
+                point = np.array([[scan_range * cos(angle)], [scan_range * sin(angle)]])
+                point_cloud.append(point)
+
+        if len(point_cloud) == 0:
+            return None
+
+        return np.hstack(point_cloud)

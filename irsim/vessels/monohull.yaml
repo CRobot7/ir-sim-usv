@@ -1,0 +1,64 @@
+# Demo monohull for top-view drawing (not a surveyed vessel).
+# Same Fossen 3DOF as wamv.yaml; hull.type selects the single-hull outline.
+
+name: monohull
+kinematics: fossen3dof
+
+geometry:
+  L: 3.0
+  LWL: 2.8
+  BOA: 0.8
+  B: 0.8
+  B_hull: 0.8
+  LCG: 1.5
+  AWP: 2.0
+  T_aft_lightship: 0.04
+  T_mid_lightship: 0.04
+  rho: 1025.0
+  Cd: 1.1
+
+load:
+  M_slick: 25.0
+  M_lightship: 25.0
+  M_full_paper: 25.0
+  P_full: 0.0
+
+hydro:
+  coeffs:
+    m: 25.0
+    I_z: 5.0
+    T: 0.04
+    X_u: 2.0
+    X_uu: 8.0
+    X_udot: -4.0
+    Y_vdot: -15.0
+    Y_rdot: -1.0
+    N_vdot: -1.0
+    N_rdot: -2.0
+    Y_vv: -10.0
+    Y_vr: 0.0
+    Y_rv: 0.0
+    Y_rr: -2.0
+    N_vv: 0.0
+    N_vr: -2.0
+    N_rv: -2.0
+    N_rr: -1.0
+    Y_v: 0.0
+    Y_r: 0.0
+    N_v: 0.0
+    N_r: 0.0
+
+hull:
+  type: monohull
+  sample_points:
+    cg: [0.0, 0.0]
+    bow: [1.5, 0.0]
+    stern: [-1.5, 0.0]
+    port: [0.0, 0.4]
+    stbd: [0.0, -0.4]
+  A_z: 2.0
+
+actuators:
+  type: dual_waterjet
+  twj_min: 0.0
+  twj_max: 40.0

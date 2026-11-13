@@ -1,0 +1,1993 @@
+# YAML Configuration Syntax
+
+The configuration file is a YAML file to initialize the environment. It contains the configuration parameters to simulate and visualize the world, obstacle, and robot. You can customize the scenario and define the behavior of the objects simply by using the parameters.
+
+---
+
+## Configuration Overview
+
+A complete IR-SIM scene is described by up to five top-level keys: `world`, `robot`, `obstacle`, `gui`, and `custom`. **`robot` and `obstacle` accept the same per-object keys**, while factory defaults can differ by object type and kinematics, such as `role`, color, state dimension, and image description. Expand the interactive tree below to explore every key with its type and default; every key is optional unless its default is `unset`. Click a section's **full docs ›** link to jump to the detailed description.
+
+In a combined configuration for multiple simulators, these keys may be nested under an optional top-level `irsim` mapping. IR-SIM reads and validates that mapping while leaving sibling simulator sections untouched. The filename passed to `irsim.make()` and used by `env.reload()` does not change.
+
+```{raw} html
+<div class="yaml-tree">
+<div class="yt-controls">
+  <button type="button" onclick="document.querySelectorAll('.yaml-tree details').forEach(d=>d.open=true)">Expand all</button>
+  <button type="button" onclick="document.querySelectorAll('.yaml-tree details').forEach(d=>d.open=false)">Collapse all</button>
+</div>
+<div class="yt-legend"><span>Key</span><span>Type</span><span>Default</span><span>Description</span></div>
+
+<details open>
+<summary><a class="yt-key" href="#world-configuration">world</a><span class="yt-type yt-t-dict">dict</span><span class="yt-note">simulation environment</span><a class="yt-link" href="#world-configuration">full docs ›</a></summary>
+<div class="yt-body">
+  <div class="yt-leaf"><a class="yt-key" href="#p-w-name">name</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-def">"world"</span><span class="yt-desc">world name</span></div>
+  <div class="yt-leaf"><a class="yt-key" href="#p-w-height">height</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">10</span><span class="yt-desc">world height (m, y-axis)</span></div>
+  <div class="yt-leaf"><a class="yt-key" href="#p-w-width">width</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">10</span><span class="yt-desc">world width (m, x-axis)</span></div>
+  <div class="yt-leaf"><a class="yt-key" href="#p-w-step-time">step_time</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">0.1</span><span class="yt-desc">simulation step (s)</span></div>
+  <div class="yt-leaf"><a class="yt-key" href="#p-w-sample-time">sample_time</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">step_time</span><span class="yt-desc">render / sample step (s)</span></div>
+  <div class="yt-leaf"><a class="yt-key" href="#p-w-offset">offset</a><span class="yt-type yt-t-list"><b class="yt-pill">list</b></span><span class="yt-def">[0, 0]</span><span class="yt-desc">world origin offset [x, y]</span></div>
+  <div class="yt-leaf"><a class="yt-key" href="#p-w-step-mode">step_mode</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-def">"internal"</span><span class="yt-desc">internal | external</span></div>
+  <div class="yt-leaf"><a class="yt-key" href="#p-w-control-mode">control_mode</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-def">"auto"</span><span class="yt-desc">auto | keyboard</span></div>
+  <div class="yt-leaf"><a class="yt-key" href="#p-w-collision-mode">collision_mode</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-def">"stop"</span><span class="yt-desc">stop | unobstructed | unobstructed_obstacles | contact</span></div>
+  <div class="yt-leaf"><a class="yt-key" href="#p-w-physics">gravity</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">9.81</span><span class="yt-desc">m/s², contact mode</span></div>
+  <div class="yt-leaf"><a class="yt-key" href="#p-w-physics">friction</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">0.5</span><span class="yt-desc">default object friction</span></div>
+  <div class="yt-leaf"><a class="yt-key" href="#p-w-physics">restitution</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">0</span><span class="yt-desc">default object bounciness</span></div>
+  <div class="yt-leaf"><a class="yt-key" href="#p-w-physics">drive_tau</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">0</span><span class="yt-desc">default drive lag, s</span></div>
+  <div class="yt-leaf"><a class="yt-key" href="#p-w-status">status</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-def">"None"</span><span class="yt-desc">initial display label</span></div>
+  <div class="yt-leaf"><a class="yt-key" href="#p-w-obstacle-map">obstacle_map</a><span class="yt-type yt-t-mix"><b class="yt-pill">str/dict/null</b></span><span class="yt-def">null</span><span class="yt-desc">occupancy-grid source</span></div>
+  <div class="yt-leaf"><a class="yt-key" href="#p-w-mdownsample">mdownsample</a><span class="yt-type yt-t-num"><b class="yt-pill">int</b></span><span class="yt-def">1</span><span class="yt-desc">obstacle-map downsample factor</span></div>
+  <div class="yt-leaf"><a class="yt-key" href="#p-w-fog-map">fog_map</a><span class="yt-type yt-t-bool"><b class="yt-pill">bool</b></span><span class="yt-def">false</span><span class="yt-desc">fog-of-map overlay</span></div>
+  <div class="yt-leaf"><a class="yt-key" href="#p-w-fog-map-resolution">fog_map_resolution</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">map res</span><span class="yt-desc">fog cell size (m)</span></div>
+  <details>
+  <summary><a class="yt-key" href="#p-w-plot">plot</a><span class="yt-type yt-t-dict">dict</span><span class="yt-note">global plot options</span></summary>
+  <div class="yt-body">
+    <div class="yt-leaf"><a class="yt-key" href="#p-w-plot">saved_figure</a><span class="yt-type yt-t-dict"><b class="yt-pill">dict</b></span><span class="yt-def">{dpi:100, bbox_inches:'tight'}</span></div>
+    <div class="yt-leaf"><a class="yt-key" href="#p-w-plot">figure_pixels</a><span class="yt-type yt-t-list"><b class="yt-pill">list</b></span><span class="yt-def">[1000, 800]</span><span class="yt-desc">figure size in px</span></div>
+    <div class="yt-leaf"><a class="yt-key" href="#p-w-plot">show_title</a><span class="yt-type yt-t-bool"><b class="yt-pill">bool</b></span><span class="yt-def">true</span></div>
+    <div class="yt-leaf"><a class="yt-key" href="#p-w-plot">title</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-def">null</span><span class="yt-desc">custom title</span></div>
+    <div class="yt-leaf"><a class="yt-key" href="#p-w-plot">no_axis</a><span class="yt-type yt-t-bool"><b class="yt-pill">bool</b></span><span class="yt-def">false</span></div>
+    <div class="yt-leaf"><a class="yt-key" href="#p-w-plot">tight</a><span class="yt-type yt-t-bool"><b class="yt-pill">bool</b></span><span class="yt-def">true</span></div>
+    <div class="yt-leaf"><a class="yt-key" href="#p-w-plot">viewpoint</a><span class="yt-type yt-t-mix"><b class="yt-pill">null/list/str</b></span><span class="yt-def">null</span><span class="yt-desc">camera center or object to follow</span></div>
+    <div class="yt-leaf"><a class="yt-key" href="#p-w-plot">grid</a><span class="yt-type yt-t-bool"><b class="yt-pill">bool</b></span><span class="yt-def">false</span><span class="yt-desc">draw coordinate grid</span></div>
+    <div class="yt-leaf"><a class="yt-key" href="#p-w-plot">grid_interval</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">null</span><span class="yt-desc">major tick spacing (m)</span></div>
+    <div class="yt-leaf"><a class="yt-key" href="#p-w-plot">show_wave</a><span class="yt-type yt-t-bool"><b class="yt-pill">bool</b></span><span class="yt-def">false</span><span class="yt-desc">2D heatmap of WaveField elevation</span></div>
+    <div class="yt-leaf"><a class="yt-key" href="#p-w-plot">wave_cmap</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-def">ocean</span></div>
+    <div class="yt-leaf"><a class="yt-key" href="#p-w-plot">wave_alpha</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">0.75</span></div>
+    <div class="yt-leaf"><a class="yt-key" href="#p-w-plot">wave_resolution</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">1.0</span><span class="yt-desc">heatmap cell size (m)</span></div>
+  </div>
+  </details>
+</div>
+</details>
+
+<details>
+<summary><a class="yt-key" href="#object-configuration">robot</a> / <a class="yt-key" href="#object-configuration">obstacle</a><span class="yt-type yt-t-list">list</span><span class="yt-note">per-object schema (default role: robot / obstacle)</span><a class="yt-link" href="#object-configuration">full docs ›</a></summary>
+<div class="yt-body">
+  <div class="yt-leaf"><a class="yt-key" href="#p-o-name">name</a><span class="yt-type yt-t-mix"><b class="yt-pill">str/list</b></span><span class="yt-def">null</span><span class="yt-desc">unique id, auto "&lt;role&gt;_&lt;id&gt;"</span></div>
+  <div class="yt-leaf"><a class="yt-key" href="#p-o-number">number</a><span class="yt-type yt-t-num"><b class="yt-pill">int</b></span><span class="yt-def">1</span><span class="yt-desc">how many to create</span></div>
+  <div class="yt-leaf"><a class="yt-key" href="#p-o-state">state</a><span class="yt-type yt-t-list"><b class="yt-pill">list</b></span><span class="yt-def">[1, 1, 0]</span><span class="yt-desc">manual initial [x, y, theta]</span></div>
+  <div class="yt-leaf"><a class="yt-key" href="#p-o-goal">goal</a><span class="yt-type yt-t-list"><b class="yt-pill">list</b></span><span class="yt-def">[1, 9, 0]</span><span class="yt-desc">manual target [x, y, theta] (or list of)</span></div>
+  <div class="yt-leaf"><a class="yt-key" href="#p-o-velocity">velocity</a><span class="yt-type yt-t-list"><b class="yt-pill">list</b></span><span class="yt-def">[0]·dim</span><span class="yt-desc">initial control vector</span></div>
+  <div class="yt-leaf"><a class="yt-key" href="#object-properties">role</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-def">top-level key</span><span class="yt-desc">robot | obstacle</span></div>
+  <div class="yt-leaf"><a class="yt-key" href="#p-o-color">color</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-def">role/kinematics</span><span class="yt-desc">matplotlib color or 'cycle'; defaults in palette_param</span></div>
+  <div class="yt-leaf"><a class="yt-key" href="#p-o-static">static</a><span class="yt-type yt-t-bool"><b class="yt-pill">bool</b></span><span class="yt-def">false</span><span class="yt-desc">immobile object</span></div>
+  <div class="yt-leaf"><a class="yt-key" href="#p-o-mass">mass</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">1.0 | inf</span><span class="yt-desc">kg, contact mode</span></div>
+  <div class="yt-leaf"><a class="yt-key" href="#p-o-friction">friction</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">0.5</span><span class="yt-desc">ground friction, contact mode</span></div>
+  <div class="yt-leaf"><a class="yt-key" href="#p-o-inertia">inertia</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">shape</span><span class="yt-desc">kg·m², contact mode</span></div>
+  <div class="yt-leaf"><a class="yt-key" href="#p-o-restitution">restitution</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">0</span><span class="yt-desc">bounciness, contact mode</span></div>
+  <div class="yt-leaf"><a class="yt-key" href="#p-o-vel-min">vel_min</a><span class="yt-type yt-t-list"><b class="yt-pill">list</b></span><span class="yt-def">[-1]·dim</span></div>
+  <div class="yt-leaf"><a class="yt-key" href="#p-o-vel-min">vel_max</a><span class="yt-type yt-t-list"><b class="yt-pill">list</b></span><span class="yt-def">[1]·dim</span></div>
+  <div class="yt-leaf"><a class="yt-key" href="#p-o-acce">acce</a><span class="yt-type yt-t-list"><b class="yt-pill">list</b></span><span class="yt-def">[inf]·dim</span><span class="yt-desc">accel limits</span></div>
+  <div class="yt-leaf"><a class="yt-key" href="#p-o-angle-range">angle_range</a><span class="yt-type yt-t-list"><b class="yt-pill">list</b></span><span class="yt-def">[-pi, pi]</span></div>
+  <div class="yt-leaf"><a class="yt-key" href="#p-o-goal-threshold">goal_threshold</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">0.1</span><span class="yt-desc">arrival distance</span></div>
+  <div class="yt-leaf"><a class="yt-key" href="#p-o-arrive-mode">arrive_mode</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-def">"position"</span><span class="yt-desc">position | state</span></div>
+  <div class="yt-leaf"><a class="yt-key" href="#p-o-description">description</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-def">null</span><span class="yt-desc">image label</span></div>
+  <div class="yt-leaf"><a class="yt-key" href="#p-o-group">group</a><span class="yt-type yt-t-num"><b class="yt-pill">int</b></span><span class="yt-def">0</span></div>
+  <div class="yt-leaf"><a class="yt-key" href="#p-o-group-name">group_name</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-def">null</span></div>
+  <div class="yt-leaf"><a class="yt-key" href="#p-o-unobstructed">unobstructed</a><span class="yt-type yt-t-bool"><b class="yt-pill">bool</b></span><span class="yt-def">false</span><span class="yt-desc">ignore collisions</span></div>
+  <div class="yt-leaf"><a class="yt-key" href="#p-o-state-dim">state_dim</a><span class="yt-type yt-t-num"><b class="yt-pill">int</b></span><span class="yt-def">null</span></div>
+  <div class="yt-leaf"><a class="yt-key" href="#p-o-vel-dim">vel_dim</a><span class="yt-type yt-t-num"><b class="yt-pill">int</b></span><span class="yt-def">null</span></div>
+  <div class="yt-leaf"><a class="yt-key" href="#p-o-fov">fov</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">null</span><span class="yt-desc">field-of-view angle (rad)</span></div>
+  <div class="yt-leaf"><a class="yt-key" href="#p-o-fov">fov_radius</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">null</span></div>
+  <details>
+  <summary><a class="yt-key" href="#p-o-distribution">distribution</a><span class="yt-type yt-t-dict">dict</span><span class="yt-note">placement when number &gt; 1</span></summary>
+  <div class="yt-body">
+    <div class="yt-utabs">
+      <input class="yt-utab-radio" type="radio" name="yt-v-distribution" id="yt-v-dist-manual" checked>
+      <input class="yt-utab-radio" type="radio" name="yt-v-distribution" id="yt-v-dist-random">
+      <input class="yt-utab-radio" type="radio" name="yt-v-distribution" id="yt-v-dist-circle">
+      <div class="yt-leaf yt-uvar-row"><a class="yt-key" href="#p-o-distribution">name</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-uvar-tabbar"><label for="yt-v-dist-manual">manual</label><label for="yt-v-dist-random">random</label><label for="yt-v-dist-circle">circle</label></span></div>
+      <div class="yt-utabpanels">
+        <div class="yt-utabpanel yt-tp-manual">
+          <div class="yt-leaf yt-uvar-note"><span class="yt-desc">No extra keys: set <code>state</code> / <code>goal</code> per object.</span></div>
+        </div>
+        <div class="yt-utabpanel yt-tp-random">
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-distribution">range_low</a><span class="yt-type yt-t-list"><b class="yt-pill">list</b></span><span class="yt-def">world bounds +0.5</span><span class="yt-desc">lower [x, y, θ] bound</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-distribution">range_high</a><span class="yt-type yt-t-list"><b class="yt-pill">list</b></span><span class="yt-def">world bounds −0.5</span><span class="yt-desc">upper [x, y, θ] bound</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-distribution">min_distance</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">1.0</span><span class="yt-desc">min pairwise spacing</span></div>
+        </div>
+        <div class="yt-utabpanel yt-tp-circle">
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-distribution">center</a><span class="yt-type yt-t-list"><b class="yt-pill">list</b></span><span class="yt-def">world center</span><span class="yt-desc">[x, y, θ] of the circle</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-distribution">radius</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">min(w,h)/2−0.5</span><span class="yt-desc">circle radius</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  </details>
+  <details>
+  <summary><a class="yt-key" href="#p-o-kinematics">kinematics</a><span class="yt-type yt-t-dict">dict</span><span class="yt-note">motion model</span></summary>
+  <div class="yt-body">
+    <div class="yt-utabs">
+      <input class="yt-utab-radio" type="radio" name="yt-v-kinematics" id="yt-v-kin-diff" checked>
+      <input class="yt-utab-radio" type="radio" name="yt-v-kinematics" id="yt-v-kin-omni">
+      <input class="yt-utab-radio" type="radio" name="yt-v-kinematics" id="yt-v-kin-omniang">
+      <input class="yt-utab-radio" type="radio" name="yt-v-kinematics" id="yt-v-kin-acker">
+      <div class="yt-leaf yt-uvar-row"><a class="yt-key" href="#p-o-kinematics">name</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-uvar-tabbar"><label for="yt-v-kin-diff">diff</label><label for="yt-v-kin-omni">omni</label><label for="yt-v-kin-omniang">omni_angular</label><label for="yt-v-kin-acker">acker</label></span></div>
+      <div class="yt-leaf"><a class="yt-key" href="#p-o-kinematics">noise</a><span class="yt-type yt-t-bool"><b class="yt-pill">bool</b></span><span class="yt-def">false</span><span class="yt-desc">add velocity noise (all variants)</span></div>
+      <div class="yt-utabpanels">
+        <div class="yt-utabpanel">
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-kinematics">alpha</a><span class="yt-type yt-t-list"><b class="yt-pill">list</b></span><span class="yt-def">[0.03, 0, 0, 0.03]</span><span class="yt-desc">noise params [α₁ … α₄]</span></div>
+        </div>
+        <div class="yt-utabpanel">
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-kinematics">alpha</a><span class="yt-type yt-t-list"><b class="yt-pill">list</b></span><span class="yt-def">[0.03, 0.03]</span><span class="yt-desc">noise params [α_fwd, α_lat]</span></div>
+        </div>
+        <div class="yt-utabpanel">
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-kinematics">alpha</a><span class="yt-type yt-t-list"><b class="yt-pill">list</b></span><span class="yt-def">[0.03, 0.03, 0.03]</span><span class="yt-desc">noise params [α_fwd, α_lat, α_yaw]</span></div>
+        </div>
+        <div class="yt-utabpanel">
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-kinematics">alpha</a><span class="yt-type yt-t-list"><b class="yt-pill">list</b></span><span class="yt-def">[0.03, 0, 0, 0.03]</span><span class="yt-desc">noise params</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-kinematics">mode</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-def">"steer"</span><span class="yt-desc">steer | angular</span></div>
+          <div class="yt-leaf yt-uvar-note"><span class="yt-desc">wheelbase comes from <code>shape.wheelbase</code>.</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  </details>
+  <details>
+  <summary><a class="yt-key" href="#p-o-shape">shape</a><span class="yt-type yt-t-dict">dict</span><span class="yt-note">geometry</span></summary>
+  <div class="yt-body">
+    <div class="yt-utabs">
+      <input class="yt-utab-radio" type="radio" name="yt-v-shape" id="yt-v-shape-circle" checked>
+      <input class="yt-utab-radio" type="radio" name="yt-v-shape" id="yt-v-shape-rect">
+      <input class="yt-utab-radio" type="radio" name="yt-v-shape" id="yt-v-shape-poly">
+      <input class="yt-utab-radio" type="radio" name="yt-v-shape" id="yt-v-shape-compound">
+      <input class="yt-utab-radio" type="radio" name="yt-v-shape" id="yt-v-shape-line">
+      <div class="yt-leaf yt-uvar-row"><a class="yt-key" href="#p-o-shape">name</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-uvar-tabbar"><label for="yt-v-shape-circle">circle</label><label for="yt-v-shape-rect">rectangle</label><label for="yt-v-shape-poly">polygon</label><label for="yt-v-shape-compound">compound</label><label for="yt-v-shape-line">linestring</label></span></div>
+      <div class="yt-utabpanels">
+        <div class="yt-utabpanel">
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-shape">radius</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">0.2</span><span class="yt-desc">circle radius</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-shape">center</a><span class="yt-type yt-t-list"><b class="yt-pill">list</b></span><span class="yt-def">[0, 0]</span><span class="yt-desc">body-frame center</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-shape">random_shape</a><span class="yt-type yt-t-bool"><b class="yt-pill">bool</b></span><span class="yt-def">false</span><span class="yt-desc">randomize radius</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-shape">radius_range</a><span class="yt-type yt-t-list"><b class="yt-pill">list</b></span><span class="yt-def">[0.1, 1.0]</span><span class="yt-desc">when random_shape</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-shape">wheelbase</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">null</span><span class="yt-desc">required for acker</span></div>
+        </div>
+        <div class="yt-utabpanel">
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-shape">length</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">1.0</span><span class="yt-desc">x-axis length</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-shape">width</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">1.0</span><span class="yt-desc">y-axis width</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-shape">wheelbase</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">null</span><span class="yt-desc">required for acker</span></div>
+        </div>
+        <div class="yt-utabpanel">
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-shape">vertices</a><span class="yt-type yt-t-list"><b class="yt-pill">list</b></span><span class="yt-def">unset</span><span class="yt-desc">[[x, y], …] body frame</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-shape">random_shape</a><span class="yt-type yt-t-bool"><b class="yt-pill">bool</b></span><span class="yt-def">false</span><span class="yt-desc">generate random polygons</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-shape">is_convex</a><span class="yt-type yt-t-bool"><b class="yt-pill">bool</b></span><span class="yt-def">false</span><span class="yt-desc">force convex when random</span></div>
+          <div class="yt-leaf yt-uvar-note"><span class="yt-desc">Random-gen extras: <code>number</code>, <code>center_range</code>, <code>avg_radius_range</code>, … (see full docs).</span></div>
+        </div>
+        <div class="yt-utabpanel">
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-shape">parts</a><span class="yt-type yt-t-list"><b class="yt-pill">list</b></span><span class="yt-def">unset</span><span class="yt-desc">non-empty list of circle, rectangle, or polygon shape dicts</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-shape">parts[].pose</a><span class="yt-type yt-t-list"><b class="yt-pill">list</b></span><span class="yt-def">[0, 0, 0]</span><span class="yt-desc">fixed body-frame [x, y, theta] for each part</span></div>
+        </div>
+        <div class="yt-utabpanel">
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-shape">vertices</a><span class="yt-type yt-t-list"><b class="yt-pill">list</b></span><span class="yt-def">unset</span><span class="yt-desc">[[x, y], …] body frame</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-shape">random_shape</a><span class="yt-type yt-t-bool"><b class="yt-pill">bool</b></span><span class="yt-def">false</span><span class="yt-desc">generate random linestrings</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-shape">is_convex</a><span class="yt-type yt-t-bool"><b class="yt-pill">bool</b></span><span class="yt-def">true</span><span class="yt-desc">force convex when random</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  </details>
+  <details>
+  <summary><a class="yt-key" href="#p-o-behavior">behavior</a><span class="yt-type yt-t-dict">dict</span><span class="yt-note">per-object motion logic</span></summary>
+  <div class="yt-body">
+    <div class="yt-utabs">
+      <input class="yt-utab-radio" type="radio" name="yt-v-behavior" id="yt-v-beh-dash" checked>
+      <input class="yt-utab-radio" type="radio" name="yt-v-behavior" id="yt-v-beh-rvo">
+      <input class="yt-utab-radio" type="radio" name="yt-v-behavior" id="yt-v-beh-sfm">
+      <div class="yt-leaf yt-uvar-row"><a class="yt-key" href="#p-o-behavior">name</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-uvar-tabbar"><label for="yt-v-beh-dash">dash</label><label for="yt-v-beh-rvo">rvo</label><label for="yt-v-beh-sfm">sfm</label></span></div>
+      <div class="yt-leaf"><a class="yt-key" href="#p-o-behavior">wander</a><span class="yt-type yt-t-bool"><b class="yt-pill">bool</b></span><span class="yt-def">false</span><span class="yt-desc">shared: new random goal on arrival</span></div>
+      <div class="yt-leaf"><a class="yt-key" href="#p-o-behavior">loop</a><span class="yt-type yt-t-bool"><b class="yt-pill">bool</b></span><span class="yt-def">false</span><span class="yt-desc">shared: cycle waypoints</span></div>
+      <div class="yt-leaf"><a class="yt-key" href="#p-o-behavior">target_roles</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-def">"all"</span><span class="yt-desc">shared: all | robot | obstacle</span></div>
+      <div class="yt-leaf"><a class="yt-key" href="#p-o-behavior">range_low</a><span class="yt-type yt-t-list"><b class="yt-pill">list</b></span><span class="yt-def">[0,0,-pi]</span><span class="yt-desc">shared: wander bound</span></div>
+      <div class="yt-leaf"><a class="yt-key" href="#p-o-behavior">range_high</a><span class="yt-type yt-t-list"><b class="yt-pill">list</b></span><span class="yt-def">[10,10,pi]</span><span class="yt-desc">shared: wander bound</span></div>
+      <div class="yt-utabpanels">
+        <div class="yt-utabpanel">
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-behavior">angle_tolerance</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">0.1</span><span class="yt-desc">orientation tol. (diff/acker/omni_angular)</span></div>
+        </div>
+        <div class="yt-utabpanel">
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-behavior">vxmax</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">1.5</span><span class="yt-desc">max x velocity</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-behavior">vymax</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">1.5</span><span class="yt-desc">max y velocity</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-behavior">acce</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">1.0</span><span class="yt-desc">acceleration factor</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-behavior">factor</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">1.0</span><span class="yt-desc">RVO scaling</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-behavior">mode</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-def">"rvo"</span><span class="yt-desc">rvo | hrvo | vo</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-behavior">neighbor_threshold</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">3.0</span><span class="yt-desc">neighbour filter distance</span></div>
+        </div>
+        <div class="yt-utabpanel">
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-behavior">vmax</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">1.5</span><span class="yt-desc">speed cap after force integration</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-behavior">neighbor_threshold</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">10.0</span><span class="yt-desc">social interaction cutoff distance</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-behavior">relaxation_time</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">0.5</span><span class="yt-desc">goal-pull time constant tau</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-behavior">force_factor_desired</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">1.0</span><span class="yt-desc">goal-pull weight</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-behavior">force_factor_social</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">2.1</span><span class="yt-desc">inter-agent repulsion weight</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-behavior">force_factor_obstacle</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">10.0</span><span class="yt-desc">obstacle repulsion weight</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-behavior">sigma_obstacle</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">0.8</span><span class="yt-desc">obstacle force decay length</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-behavior">lambda_importance</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">2.0</span><span class="yt-desc">velocity vs. position weight in interaction direction</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-behavior">gamma</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">0.35</span><span class="yt-desc">interaction range scale</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-behavior">n_angular</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">2.0</span><span class="yt-desc">sideways force angular sharpness</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-behavior">n_velocity</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">3.0</span><span class="yt-desc">slowdown force angular sharpness</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-behavior">safety_radius</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">0.0</span><span class="yt-desc">personal-space buffer (m) shifting decay closer in</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  </details>
+  <details>
+  <summary><a class="yt-key" href="#p-o-group-behavior">group_behavior</a><span class="yt-type yt-t-dict">dict</span><span class="yt-note">group-level (ORCA / SFM)</span></summary>
+  <div class="yt-body">
+    <div class="yt-utabs">
+      <input class="yt-utab-radio" type="radio" name="yt-v-group-behavior" id="yt-v-gbeh-orca" checked>
+      <input class="yt-utab-radio" type="radio" name="yt-v-group-behavior" id="yt-v-gbeh-sfm">
+      <div class="yt-leaf yt-uvar-row"><a class="yt-key" href="#p-o-group-behavior">name</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-uvar-tabbar"><label for="yt-v-gbeh-orca">orca</label><label for="yt-v-gbeh-sfm">sfm</label></span></div>
+      <div class="yt-leaf"><a class="yt-key" href="#p-o-group-behavior">wander</a><span class="yt-type yt-t-bool"><b class="yt-pill">bool</b></span><span class="yt-def">false</span><span class="yt-desc">shared: new random goal on arrival</span></div>
+      <div class="yt-leaf"><a class="yt-key" href="#p-o-group-behavior">loop</a><span class="yt-type yt-t-bool"><b class="yt-pill">bool</b></span><span class="yt-def">false</span><span class="yt-desc">shared: cycle waypoints</span></div>
+      <div class="yt-utabpanels">
+        <div class="yt-utabpanel">
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-group-behavior">neighborDist</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">15.0</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-group-behavior">maxNeighbors</a><span class="yt-type yt-t-num"><b class="yt-pill">int</b></span><span class="yt-def">10</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-group-behavior">timeHorizon</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">20.0</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-group-behavior">timeHorizonObst</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">10.0</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-group-behavior">safe_radius</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">0.1</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-group-behavior">maxSpeed</a><span class="yt-type yt-t-mix"><b class="yt-pill">float/null</b></span><span class="yt-def">null</span><span class="yt-desc">falls back to vel_max</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-group-behavior">target_roles</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-def">"obstacle"</span><span class="yt-desc">all | robot | obstacle</span></div>
+        </div>
+        <div class="yt-utabpanel">
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-group-behavior">vmax</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">1.5</span><span class="yt-desc">speed cap after force integration</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-group-behavior">neighbor_threshold</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">10.0</span><span class="yt-desc">social interaction cutoff distance</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-group-behavior">relaxation_time</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">0.5</span><span class="yt-desc">goal-pull time constant tau</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-group-behavior">force_factor_desired</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">1.0</span><span class="yt-desc">goal-pull weight</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-group-behavior">force_factor_social</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">2.1</span><span class="yt-desc">inter-agent repulsion weight</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-group-behavior">force_factor_obstacle</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">10.0</span><span class="yt-desc">obstacle repulsion weight</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-group-behavior">sigma_obstacle</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">0.8</span><span class="yt-desc">obstacle force decay length</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-group-behavior">lambda_importance</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">2.0</span><span class="yt-desc">velocity vs. position weight in interaction direction</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-group-behavior">gamma</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">0.35</span><span class="yt-desc">interaction range scale</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-group-behavior">n_angular</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">2.0</span><span class="yt-desc">sideways force angular sharpness</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-group-behavior">n_velocity</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">3.0</span><span class="yt-desc">slowdown force angular sharpness</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-group-behavior">safety_radius</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">0.0</span><span class="yt-desc">personal-space buffer (m) shifting decay closer in</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-group-behavior">social_groups</a><span class="yt-type yt-t-mix"><b class="yt-pill">list/null</b></span><span class="yt-def">null</span><span class="yt-desc">member index lists of pedestrians walking together</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-group-behavior">force_factor_coherence</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">2.0</span><span class="yt-desc">pull toward the group centre</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-group-behavior">force_factor_group_repulsion</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">1.0</span><span class="yt-desc">push between too-close members</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-group-behavior">group_repulsion_threshold</a><span class="yt-type yt-t-mix"><b class="yt-pill">float/null</b></span><span class="yt-def">null</span><span class="yt-desc">repel below this centre distance; null = sum of radii</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-group-behavior">force_factor_gaze</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">3.0</span><span class="yt-desc">brake when the group leaves the field of view</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-group-behavior">gaze_vision_angle</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">90.0</span><span class="yt-desc">field-of-view half-angle (deg)</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-group-behavior">target_roles</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-def">"obstacle"</span><span class="yt-desc">all | robot | obstacle</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  </details>
+  <details>
+  <summary><a class="yt-key" href="#p-o-sensors">sensors</a><span class="yt-type yt-t-list">list</span><span class="yt-note">lidar2d, fmcw_lidar2d or contact2d</span></summary>
+  <div class="yt-body">
+    <div class="yt-utabs">
+      <input class="yt-utab-radio" type="radio" name="yt-v-sensors" id="yt-v-sen-lidar2d" checked>
+      <input class="yt-utab-radio" type="radio" name="yt-v-sensors" id="yt-v-sen-fmcw">
+      <input class="yt-utab-radio" type="radio" name="yt-v-sensors" id="yt-v-sen-contact">
+      <div class="yt-leaf yt-uvar-row"><a class="yt-key" href="#p-o-sensors">name</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-uvar-tabbar"><label for="yt-v-sen-lidar2d">lidar2d</label><label for="yt-v-sen-fmcw">fmcw_lidar2d</label><label for="yt-v-sen-contact">contact2d</label></span></div>
+      <div class="yt-leaf"><a class="yt-key" href="#p-o-sensors">range_min</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">0</span></div>
+      <div class="yt-leaf"><a class="yt-key" href="#p-o-sensors">range_max</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">10</span></div>
+      <div class="yt-leaf"><a class="yt-key" href="#p-o-sensors">angle_range</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">pi</span></div>
+      <div class="yt-leaf"><a class="yt-key" href="#p-o-sensors">number</a><span class="yt-type yt-t-num"><b class="yt-pill">int</b></span><span class="yt-def">100</span><span class="yt-desc">beam count</span></div>
+      <div class="yt-leaf"><a class="yt-key" href="#p-o-sensors">scan_time</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">0.1</span></div>
+      <div class="yt-leaf"><a class="yt-key" href="#p-o-sensors">noise</a><span class="yt-type yt-t-bool"><b class="yt-pill">bool</b></span><span class="yt-def">false</span><span class="yt-desc">both variants</span></div>
+      <div class="yt-leaf"><a class="yt-key" href="#p-o-sensors">std</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">0.2</span></div>
+      <div class="yt-leaf"><a class="yt-key" href="#p-o-sensors">angle_std</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">0.0</span></div>
+      <div class="yt-leaf"><a class="yt-key" href="#p-o-sensors">offset</a><span class="yt-type yt-t-list"><b class="yt-pill">list</b></span><span class="yt-def">[0, 0, 0]</span></div>
+      <div class="yt-utabpanels">
+        <div class="yt-utabpanel">
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-sensors">has_velocity</a><span class="yt-type yt-t-bool"><b class="yt-pill">bool</b></span><span class="yt-def">false</span></div>
+          <details>
+          <summary><a class="yt-key" href="#p-o-sensors">plot</a><span class="yt-type yt-t-dict">dict</span><span class="yt-note">sensor visualization · flat keys also accepted</span></summary>
+          <div class="yt-body">
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-sensors">alpha</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">0.3</span><span class="yt-desc">plot transparency</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-sensors">color</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-def">"#CC3311"</span></div>
+          </div>
+          </details>
+        </div>
+        <div class="yt-utabpanel">
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-sensors">motion_compensate</a><span class="yt-type yt-t-bool"><b class="yt-pill">bool</b></span><span class="yt-def">false</span><span class="yt-desc">remove ego-motion from radial velocity</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-sensors">velocity_noise_std</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">0.0</span><span class="yt-desc">radial-velocity noise std</span></div>
+          <div class="yt-leaf yt-uvar-note"><span class="yt-desc">scan adds <code>radial_velocity</code> and <code>valid</code> arrays.</span></div>
+          <details>
+          <summary><a class="yt-key" href="#p-o-sensors">plot</a><span class="yt-type yt-t-dict">dict</span><span class="yt-note">Doppler visualization · flat keys also accepted</span></summary>
+          <div class="yt-body">
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-sensors">alpha</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">0.3</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-sensors">color</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-def">"#CC3311"</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-sensors">velocity_color</a><span class="yt-type yt-t-bool"><b class="yt-pill">bool</b></span><span class="yt-def">true</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-sensors">velocity_color_max</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">2.0</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-sensors">velocity_linewidth</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">2.5</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-sensors">no_hit_linewidth</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">0.8</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-sensors">no_hit_alpha</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">0.03</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-sensors">show_velocity_markers</a><span class="yt-type yt-t-bool"><b class="yt-pill">bool</b></span><span class="yt-def">true</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-sensors">velocity_marker_size</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">36</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-sensors">velocity_marker_edge_color</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-def">"black"</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-sensors">velocity_marker_edge_width</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">0.6</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-sensors">zero_velocity_color</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-def">"#56B4E9"</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-sensors">positive_velocity_color</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-def">"#CC3311"</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-sensors">negative_velocity_color</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-def">"#0072B2"</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-sensors">no_hit_color</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-def">"lightgray"</span></div>
+          </div>
+          </details>
+        </div>
+        <div class="yt-utabpanel">
+          <div class="yt-leaf yt-uvar-note"><span class="yt-desc">no beam parameters, the shared keys above do not apply. Built into every object; listing it draws the contact points and force lines.</span></div>
+          <details>
+          <summary><a class="yt-key" href="#p-o-sensors">plot</a><span class="yt-type yt-t-dict">dict</span><span class="yt-note">contact visualization · flat keys also accepted</span></summary>
+          <div class="yt-body">
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-sensors">force_scale</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">0.05</span><span class="yt-desc">force line length per newton (m)</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-sensors">marker_size</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">6</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-sensors">linewidth</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">1.5</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-sensors">alpha</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">0.9</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-sensors">color</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-def">"#CC79A7"</span></div>
+          </div>
+          </details>
+        </div>
+      </div>
+    </div>
+  </div>
+  </details>
+  <details>
+  <summary><a class="yt-key" href="#p-o-plot">plot</a><span class="yt-type yt-t-dict">dict</span><span class="yt-note">per-object visualization</span></summary>
+  <div class="yt-body">
+    <div class="yt-utabs">
+      <input class="yt-utab-radio" type="radio" name="yt-v-oplot" id="yt-v-oplot-obj" checked>
+      <input class="yt-utab-radio" type="radio" name="yt-v-oplot" id="yt-v-oplot-goal">
+      <input class="yt-utab-radio" type="radio" name="yt-v-oplot" id="yt-v-oplot-text">
+      <input class="yt-utab-radio" type="radio" name="yt-v-oplot" id="yt-v-oplot-arrow">
+      <input class="yt-utab-radio" type="radio" name="yt-v-oplot" id="yt-v-oplot-traj">
+      <input class="yt-utab-radio" type="radio" name="yt-v-oplot" id="yt-v-oplot-trail">
+      <input class="yt-utab-radio" type="radio" name="yt-v-oplot" id="yt-v-oplot-fov">
+      <div class="yt-leaf yt-uvar-row"><span class="yt-uvar-lead">group</span><span class="yt-uvar-tabbar"><label for="yt-v-oplot-obj">Object</label><label for="yt-v-oplot-goal">Goal</label><label for="yt-v-oplot-text">Text</label><label for="yt-v-oplot-arrow">Arrow</label><label for="yt-v-oplot-traj">Trajectory</label><label for="yt-v-oplot-trail">Trail</label><label for="yt-v-oplot-fov">Sensor·FOV</label></span></div>
+      <div class="yt-utabpanels">
+        <div class="yt-utabpanel">
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-plot">obj_color</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-def">object's color</span><span class="yt-desc">outline / fill colour</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-plot">obj_alpha</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">1.0</span><span class="yt-desc">transparency 0–1</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-plot">obj_linestyle</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-def">"-"</span><span class="yt-desc">outline line style</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-plot">obj_linewidth</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">1.0</span></div>
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-plot">obj_zorder</a><span class="yt-type yt-t-num"><b class="yt-pill">int</b></span><span class="yt-def">3 / 1; image 2</span><span class="yt-desc">draw order (robot / obstacle / image)</span></div>
+        </div>
+        <div class="yt-utabpanel">
+          <input type="checkbox" class="yt-gate" id="yt-g-goal">
+          <div class="yt-leaf yt-gate-row"><a class="yt-key" href="#p-o-plot">show_goal</a><span class="yt-type yt-t-bool"><b class="yt-pill">bool</b></span><span class="yt-def yt-def-off">false</span><span class="yt-def yt-def-on">true</span><span class="yt-desc">master switch: enables the keys below</span><label class="yt-switch" for="yt-g-goal" title="preview enabled state"></label></div>
+          <div class="yt-gated">
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-plot">goal_color</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-def">object's color</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-plot">goal_alpha</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">0.5</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-plot">goal_zorder</a><span class="yt-type yt-t-num"><b class="yt-pill">int</b></span><span class="yt-def">1</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-plot">show_goal_text</a><span class="yt-type yt-t-bool"><b class="yt-pill">bool</b></span><span class="yt-def">false</span></div>
+          </div>
+        </div>
+        <div class="yt-utabpanel">
+          <input type="checkbox" class="yt-gate" id="yt-g-text">
+          <div class="yt-leaf yt-gate-row"><a class="yt-key" href="#p-o-plot">show_text</a><span class="yt-type yt-t-bool"><b class="yt-pill">bool</b></span><span class="yt-def yt-def-off">false</span><span class="yt-def yt-def-on">true</span><span class="yt-desc">master switch: enables the keys below</span><label class="yt-switch" for="yt-g-text" title="preview enabled state"></label></div>
+          <div class="yt-gated">
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-plot">text_color</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-def">"k"</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-plot">text_size</a><span class="yt-type yt-t-num"><b class="yt-pill">int</b></span><span class="yt-def">10</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-plot">text_alpha</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">1.0</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-plot">text_zorder</a><span class="yt-type yt-t-num"><b class="yt-pill">int</b></span><span class="yt-def">2</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-plot">text_position</a><span class="yt-type yt-t-list"><b class="yt-pill">list</b></span><span class="yt-def">radius offset</span><span class="yt-desc">[dx, dy] from center</span></div>
+          </div>
+        </div>
+        <div class="yt-utabpanel">
+          <input type="checkbox" class="yt-gate" id="yt-g-arrow">
+          <div class="yt-leaf yt-gate-row"><a class="yt-key" href="#p-o-plot">show_arrow</a><span class="yt-type yt-t-bool"><b class="yt-pill">bool</b></span><span class="yt-def yt-def-off">false</span><span class="yt-def yt-def-on">true</span><span class="yt-desc">master switch: enables the keys below</span><label class="yt-switch" for="yt-g-arrow" title="preview enabled state"></label></div>
+          <div class="yt-gated">
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-plot">arrow_color</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-def">"#F0E442"</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-plot">arrow_length</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">0.4</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-plot">arrow_width</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">0.6</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-plot">arrow_alpha</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">1.0</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-plot">arrow_zorder</a><span class="yt-type yt-t-num"><b class="yt-pill">int</b></span><span class="yt-def">3</span></div>
+          </div>
+        </div>
+        <div class="yt-utabpanel">
+          <input type="checkbox" class="yt-gate" id="yt-g-traj">
+          <div class="yt-leaf yt-gate-row"><a class="yt-key" href="#p-o-plot">show_trajectory</a><span class="yt-type yt-t-bool"><b class="yt-pill">bool</b></span><span class="yt-def yt-def-off">false</span><span class="yt-def yt-def-on">true</span><span class="yt-desc">master switch: enables the keys below</span><label class="yt-switch" for="yt-g-traj" title="preview enabled state"></label></div>
+          <div class="yt-gated">
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-plot">traj_color</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-def">object's color</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-plot">traj_style</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-def">"-"</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-plot">traj_width</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">object's width</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-plot">traj_alpha</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">0.5</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-plot">traj_zorder</a><span class="yt-type yt-t-num"><b class="yt-pill">int</b></span><span class="yt-def">0</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-plot">keep_traj_length</a><span class="yt-type yt-t-num"><b class="yt-pill">int</b></span><span class="yt-def">0</span><span class="yt-desc">0 = keep all</span></div>
+          </div>
+        </div>
+        <div class="yt-utabpanel">
+          <input type="checkbox" class="yt-gate" id="yt-g-trail">
+          <div class="yt-leaf yt-gate-row"><a class="yt-key" href="#p-o-plot">show_trail</a><span class="yt-type yt-t-bool"><b class="yt-pill">bool</b></span><span class="yt-def yt-def-off">false</span><span class="yt-def yt-def-on">true</span><span class="yt-desc">master switch: enables the keys below</span><label class="yt-switch" for="yt-g-trail" title="preview enabled state"></label></div>
+          <div class="yt-gated">
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-plot">trail_freq</a><span class="yt-type yt-t-num"><b class="yt-pill">int</b></span><span class="yt-def">2</span><span class="yt-desc">plot every N steps</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-plot">trail_type</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-def">object's shape</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-plot">trail_edgecolor</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-def">object's color</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-plot">trail_linewidth</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">0.8</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-plot">trail_alpha</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">0.7</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-plot">trail_fill</a><span class="yt-type yt-t-bool"><b class="yt-pill">bool</b></span><span class="yt-def">false</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-plot">trail_color</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-def">object's color</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-plot">trail_zorder</a><span class="yt-type yt-t-num"><b class="yt-pill">int</b></span><span class="yt-def">0</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-plot">keep_trail_length</a><span class="yt-type yt-t-num"><b class="yt-pill">int</b></span><span class="yt-def">0</span><span class="yt-desc">0 = keep all</span></div>
+          </div>
+        </div>
+        <div class="yt-utabpanel">
+          <div class="yt-leaf"><a class="yt-key" href="#p-o-plot">show_sensor</a><span class="yt-type yt-t-bool"><b class="yt-pill">bool</b></span><span class="yt-def">true</span><span class="yt-desc">show sensor visualization</span></div>
+          <input type="checkbox" class="yt-gate" id="yt-g-fov">
+          <div class="yt-leaf yt-gate-row"><a class="yt-key" href="#p-o-plot">show_fov</a><span class="yt-type yt-t-bool"><b class="yt-pill">bool</b></span><span class="yt-def yt-def-off">false</span><span class="yt-def yt-def-on">true</span><span class="yt-desc">master switch: enables the keys below</span><label class="yt-switch" for="yt-g-fov" title="preview enabled state"></label></div>
+          <div class="yt-gated">
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-plot">fov_color</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-def">"#56B4E9"</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-plot">fov_edge_color</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-def">"#0072B2"</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-plot">fov_alpha</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">0.5</span></div>
+            <div class="yt-leaf"><a class="yt-key" href="#p-o-plot">fov_zorder</a><span class="yt-type yt-t-num"><b class="yt-pill">int</b></span><span class="yt-def">1</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  </details>
+</div>
+</details>
+
+<details>
+<summary><a class="yt-key" href="#gui-configuration">gui</a><span class="yt-type yt-t-dict">dict</span><span class="yt-note">optional interactive controls</span><a class="yt-link" href="#gui-configuration">full docs ›</a></summary>
+<div class="yt-body">
+  <details>
+  <summary><a class="yt-key" href="#p-g-keyboard">keyboard</a><span class="yt-type yt-t-dict">dict</span><span class="yt-note">active when control_mode: keyboard</span></summary>
+  <div class="yt-body">
+    <div class="yt-leaf"><a class="yt-key" href="#p-g-keyboard">backend</a><span class="yt-type yt-t-str"><b class="yt-pill">str</b></span><span class="yt-def">"pynput"</span><span class="yt-desc">pynput | mpl</span></div>
+    <div class="yt-leaf"><a class="yt-key" href="#p-g-keyboard">global_hook</a><span class="yt-type yt-t-bool"><b class="yt-pill">bool</b></span><span class="yt-def">false</span></div>
+    <div class="yt-leaf"><a class="yt-key" href="#p-g-keyboard">key_lv_max</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">3.0</span></div>
+    <div class="yt-leaf"><a class="yt-key" href="#p-g-keyboard">key_ang_max</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">1.0</span></div>
+    <div class="yt-leaf"><a class="yt-key" href="#p-g-keyboard">key_lv</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">0.0</span></div>
+    <div class="yt-leaf"><a class="yt-key" href="#p-g-keyboard">key_ang</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">0.0</span></div>
+    <div class="yt-leaf"><a class="yt-key" href="#p-g-keyboard">key_rot</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">0.0</span><span class="yt-desc">yaw rate (omni_angular)</span></div>
+    <div class="yt-leaf"><a class="yt-key" href="#p-g-keyboard">key_id</a><span class="yt-type yt-t-num"><b class="yt-pill">int</b></span><span class="yt-def">0</span></div>
+  </div>
+  </details>
+  <details>
+  <summary><a class="yt-key" href="#p-g-mouse">mouse</a><span class="yt-type yt-t-dict">dict</span><span class="yt-note">interactive zoom / pan</span></summary>
+  <div class="yt-body">
+    <div class="yt-leaf"><a class="yt-key" href="#p-g-mouse">zoom_factor</a><span class="yt-type yt-t-num"><b class="yt-pill">float</b></span><span class="yt-def">1.1</span></div>
+  </div>
+  </details>
+</div>
+</details>
+
+</div>
+<script>
+(function(){
+  var gen = 0;            // cancels stale settle chains on a new jump
+  function reveal(hash){
+    if(!hash || hash.charAt(0) !== '#') return;
+    var el = document.getElementById(decodeURIComponent(hash.slice(1)));
+    if(!el) return;
+    var myGen = ++gen;
+    var n = el;
+    while(n && n !== document.body){
+      if(n.tagName === 'DETAILS' && !n.open) n.open = true;
+      n = n.parentElement;
+    }
+    var sib = el.nextElementSibling, hops = 0;
+    while(sib && hops < 3){
+      if(sib.tagName === 'DETAILS' && !sib.open){ sib.open = true; break; }
+      var d = sib.querySelector && sib.querySelector('details:not([open])');
+      if(d){ d.open = true; break; }
+      sib = sib.nextElementSibling; hops++;
+    }
+    var box = el;
+    if(el.tagName === 'SPAN' || el.tagName === 'A'){
+      box = el.closest('section, .sd-card') || el.parentElement || el;
+    }
+    function settle(tries){
+      if(myGen !== gen) return;          // a newer jump superseded this one
+      el.scrollIntoView({block:'start'});
+      if(tries > 0){ setTimeout(function(){ settle(tries - 1); }, 90); }
+      else {
+        box.classList.add('yt-jump-flash');
+        setTimeout(function(){ box.classList.remove('yt-jump-flash'); }, 1300);
+      }
+    }
+    setTimeout(function(){ settle(7); }, 60);
+  }
+  document.addEventListener('click', function(e){
+    var a = e.target.closest && e.target.closest('.yaml-tree a[href^="#"]');
+    if(!a) return;
+    var hash = a.getAttribute('href');
+    e.preventDefault();
+    if(history.pushState) history.pushState(null, '', hash); else location.hash = hash;
+    reveal(hash);
+  });
+  window.addEventListener('hashchange', function(){ reveal(location.hash); });
+  window.addEventListener('load', function(){
+    if(location.hash) setTimeout(function(){ reveal(location.hash); }, 80);
+  });
+})();
+</script>
+```
+
+```{tip}
+This tree is a quick map: click any key to jump to its full description. For prose, examples, and edge cases, see the per-section docs below.
+```
+
+---
+
+### Quick Start Example
+
+The configuration file is divided into three main sections: `world`, `robot`, and `obstacle`. Here's a minimal working example you can copy and adapt:
+
+::::{tab-set}
+
+:::{tab-item} Basic Configuration
+```yaml
+world:
+  height: 10  # the height of the world
+  width: 10   # the width of the world
+  step_time: 0.1  # 10Hz calculate each step
+  sample_time: 0.1  # 10 Hz for render and data extraction 
+  offset: [0, 0] # the offset of the world on x and y 
+  step_mode: 'internal'  # 'internal' or 'external'
+  collision_mode: 'stop'  # 'stop', 'unobstructed', 'unobstructed_obstacles', 'contact'
+  plot:
+    show_title: true
+    figure_pixels: [1000, 800]
+
+robot:
+  - kinematics: {name: 'diff'}  # omni, diff, acker
+    shape: {name: 'circle', radius: 0.2}  # radius
+    # shape: {name: 'rectangle', length: 0.5, width: 0.2}  # radius
+    state: [1, 1, 0]  
+    goal: [9, 9, 0] 
+    # acce: [3, .inf]   # acce of [linear, angular]  or [v_x, v_y] or [linear, steer]
+    behavior: {name: 'dash'} # move toward to the goal directly 
+  
+obstacle:
+  - number: 10
+    distribution: {name: 'random'}
+    shape: 
+      - {name: 'circle', radius: 1.0}  # radius
+      - {name: 'rectangle', length: 1.5, width: 1.2}  # radius
+    state: 
+      - [5, 5, 0]  
+      - [4, 4, 0]
+  
+  - shape: {name: 'rectangle', length: 1.5, width: 1.2}  # radius
+    state: [6, 5, 1] 
+
+  - shape: {name: 'linestring', vertices: [[5, 5], [4, 0], [1, 6]] }  # vertices
+    state: [0, 0, 0] 
+    unobstructed: True
+```
+:::
+
+::::
+
+````{important}
+**Key Configuration Guidelines:**
+
+- To include several robots or obstacles in the configuration file, add separate entries under the robot and obstacle sections using `-` for each additional item.
+- Parameters such as distribution, shape, behavior, group_behavior, and kinematics must be formatted as `{key: value}` pairs. Ensure that each dictionary includes the `name` key; omitting name will result in a None value for that parameter.
+- When dealing with multiple objects (i.e., when the number is greater than 1), utilize the `distribution` parameter to define how these objects are distributed.
+- By default, all objects within the same group share identical configurations. To customize individual objects within a group, add sub-parameters using `-`. Any additional objects not explicitly configured will inherit the settings of the last specified object in the group.
+- Object-level `name` is optional and identifies each object. If omitted, it defaults to `"<role>_<id>"` (e.g., `robot_0`, `obstacle_3`). Names must be unique across all objects; duplicates raise an error during environment initialization. Do not confuse object-level `name` with the `name` keys used inside dictionaries like `shape`, `kinematics`, or `behavior` (which indicate component types).
+````
+
+---
+
+(world-configuration)=
+## World Configuration
+
+This section outlines the configuration parameters available for the `world` section.  
+
+(world-parameters-table)=
+### World Parameters Table
+
+| **Parameter**    | **Type**          | **Default** | **Description**                                                                                            |
+| ---------------- | ----------------- | ----------- | ---------------------------------------------------------------------------------------------------------- |
+| `name`           | `str`             | `"world"`   | Name of the world                                                                                          |
+| `height`         | `float`           | `10`        | Height of the world (meter)                                                                                |
+| `width`          | `float`           | `10`        | Width of the world (meter)                                                                                 |
+| `step_time`      | `float`           | `0.1`       | Time interval between simulation steps (in seconds)                                                        |
+| `sample_time`    | `float`           | `step_time` | Time interval between samples for rendering and data extraction (in seconds). Defaults to `step_time` if not specified. |
+| `offset`         | `list` of `float` | `[0, 0]`    | Offset for the world's position in `[x, y]` coordinates                                                    |
+| `step_mode`      | `str`             | `"internal"` | State advancement mode. Support mode: `internal` or `external`                                          |
+| `control_mode`   | `str`             | `"auto"`    | Control mode of the simulation. Support mode: `auto` or `keyboard`                                         |
+| `collision_mode` | `str`             | `"stop"`    | Collision handling mode (Support: `"stop"`, `"unobstructed"`, `"unobstructed_obstacles"`, `"contact"`)                  |
+| `gravity`        | `float`           | `9.81`      | Gravitational acceleration in m/s² for the `contact` collision mode; with a body's `friction` and `mass` it gives the ground friction force |
+| `friction`       | `float`           | `0.5`       | Ground friction coefficient objects get unless they set their own `friction` (the PhysX material default) |
+| `restitution`    | `float`           | `0`         | Bounciness objects get unless they set their own `restitution` (the Isaac Lab material default: no bounce) |
+| `drive_tau`      | `float`           | `0`         | Drive lag in seconds of driven objects in the `contact` collision mode unless their `kinematics` set `tau` |
+| `status`         | `str`             | `"None"`    | Initial display label; replaced by the runtime status after the first completed step |
+| `obstacle_map`   | `str`, `ndarray`, `dict`, or `null` | `None`      | Generator spec **dict** (e.g. `{ name: image, path: '…' }` or `{ name: perlin, resolution: 0.1, … }`). String path is shorthand for image generator. See [Configure grid map](../usage/configure_grid_map.md). |
+| `mdownsample`    | `int`             | `1`         | Downsampling factor for the obstacle map to reduce resolution and decrease computational load.             |
+| `fog_map`        | `bool`            | `false`     | Enable a fog-of-map overlay: the world starts grey (unexplored) and is revealed by each lidar's line of sight as the robot explores. See [`fog_map`](#p-w-fog-map) below. |
+| `fog_map_resolution` | `float`       | map cell size | Fog cell size in metres (only used when `fog_map: true`). Defaults to the obstacle map's cell size, or `0.1` when there is no obstacle map. Finer is smoother but heavier; coarser is faster. |
+| `plot`           | `dict`            | `{}`        | Plotting options for initializing the plot of the world.                                                   |
+
+### Detailed Parameter Descriptions
+
+(world-properties)=
+::::{dropdown} **world properties**
+
+(p-w-name)=
+**`name`** (`str`, default: `"world"`)
+: Defines the name of the world used in the simulation. This can be useful for identifying different simulation environments.
+
+(p-w-height)=
+**`height`** (`float`, default: `10`)
+: Specifies the vertical size of the world in units of meters in the Y-axis direction plotted on the screen.
+
+(p-w-width)=
+**`width`** (`float`, default: `10`)  
+: Specifies the horizontal size of the world in units of meters in the X-axis direction plotted on the screen.
+
+(p-w-step-time)=
+**`step_time`** (`float`, default: `0.1`)
+: Determines the time interval between each simulation step. 
+  
+  **Performance Impact**: A smaller `step_time` results in a higher simulation frequency (e.g., `0.1` seconds corresponds to 10 Hz) but needs longer time to run the simulation.
+
+(p-w-sample-time)=
+**`sample_time`** (`float`, default: `step_time`)
+: Defines the time interval for rendering the simulation and extracting data. This controls how frequently visual updates and data recordings occur. If not specified, defaults to the value of `step_time`. The ratio to `step_time` is truncated to a whole number of steps (at least one).
+
+(p-w-offset)=
+**`offset`** (`list` of `float`, default: `[0, 0]`)
+: Sets the initial positional offset of the world on the X and Y axes. This is useful for positioning the world within a larger coordinate system or for relative placement.
+::::
+
+(world-mode)=
+::::{dropdown} **world mode**
+
+(p-w-step-mode)=
+**`step_mode`** (`str`, default: `"internal"`)
+: Defines who advances object states during `env.step()`:
+
+  **Options:**
+  - `internal`: IR-SIM advances states through its kinematics using explicit actions, keyboard commands, group behaviors, or object behaviors.
+  - `external`: An external system owns the state update. Set each object's state and velocity with `set_state()` and `set_velocity()`, then call `env.step()` without an action. IR-SIM synchronizes geometry and sensors, rebuilds collision data, updates status, and advances the world clock without running its kinematics or behaviors.
+
+  `irsim.make("world.yaml", step_mode="...")` can override the YAML value for a particular run. The override remains active across `env.reload()` and `env.reset(random=True)`.
+
+(p-w-control-mode)=
+**`control_mode`** (`str`, default: `"auto"`)
+: Configures how the objects in the simulation are controlled:
+
+  **Options:**
+  - `auto`: Automatic control by the input velocities defined in python script or behavior in the YAML file.
+  - `keyboard`: Manual control via keyboard inputs. The key inputs are defined in the file.
+
+(p-w-collision-mode)=
+**`collision_mode`** (`str`, default: `"stop"`)
+: Defines how collisions between objects are handled in the simulation:
+
+  **Options:**
+  - `stop`: Stops the movement of objects upon collision. (default)
+  - `unobstructed`: Allows objects to pass through each other without consideration of any collision.
+  - `unobstructed_obstacles`: Only allows obstacles to pass through each other without consideration of any collision. The robots will stop when they are in collision with the obstacles.
+  - `contact`: Objects are not stopped. After every step, overlapping objects are pushed apart along their contact normal as rigid bodies in a physics engine are, using [`mass`](#p-o-mass) and [`friction`](#p-o-friction): a robot pushes a box at its own speed while its traction beats the box's ground friction and stalls against a box too heavy for it, a box hit off-center turns, a released box slides to a stop, and an object without mass (a wall, a static obstacle, or the grid map) stops it while it slides along the surface. See [Physical properties and contact mode](../usage/configure_robots_obstacles.md#physical-properties-and-contact-mode).
+
+(p-w-physics)=
+**`gravity`**, **`friction`**, **`restitution`**, **`drive_tau`** (`float`, defaults: `9.81`, `0.5`, `0`, `0`)
+: The physics the [`contact`](#p-w-collision-mode) collision mode works with, set once for the whole world. `gravity` is the acceleration that turns a body's `friction * mass` into its ground friction force. `friction`, `restitution` and `drive_tau` are what every object starts from: an object's own [`friction`](#p-o-friction) or [`restitution`](#p-o-restitution), or a `tau` under its [`kinematics`](#object-kinematics), overrides them. The defaults are the material defaults of PhysX and Isaac Lab, and robots track their commands instantly as Isaac's stiff default drives do at this step size, so a scene without these keys behaves like one of theirs; lower `friction` for a slippery floor, or set `drive_tau`, `0.2` s for a small base with a soft velocity loop, to give every robot a drive that follows commands with a lag.
+
+  ```yaml
+  # Example usage
+  world:
+    collision_mode: 'contact'
+    gravity: 9.81
+    friction: 0.3        # a slippery floor for every box
+    restitution: 0.0
+    drive_tau: 0.0        # 0.2 would give every robot a small base's drive lag
+  ```
+
+(p-w-status)=
+**`status`** (`str`, default: `"None"`)
+: Sets the label displayed before the first completed simulation step. It accepts any string and defaults to the `"None"` sentinel.
+
+  After each completed step, IR-SIM replaces this label with the computed runtime status, such as `"Running"`, `"Arrived"`, or `"Collision"`.
+
+  **Note**: This setting does not control execution. In particular, `status: "Pause"` does not start a paused simulation. Use `env.pause()` and `env.resume()` to control execution, and `env.done()` to check completion.
+::::
+
+(world-map)=
+::::{dropdown} **world map**
+
+(p-w-obstacle-map)=
+**`obstacle_map`** (`dict`, `str`, `ndarray`, or `null`, default: `None`)
+: Occupancy grid source. **Canonical form is a generator spec dict** with ``name``; other types are convenience/backward compat.
+
+  - **Generator spec** (`dict`): ``name`` identifies the generator. ``name: image`` with ``path`` (e.g. ``'cave.png'``) loads an image; grid size from the image. ``name: perlin`` (and others) require ``resolution``; grid size = world size / resolution. See [Configure grid map](../usage/configure_grid_map.md). To add a new generator, see [Adding a new map generator](../usage/configure_grid_map.md#adding-a-new-map-generator).
+  - **Image path** (`str`): Treated as ``{ name: image, path: obstacle_map }`` (backward compat).
+  - **Occupancy grid** (`ndarray`): Programmatic use only. Float 0–100; world size must match grid shape.
+  - **`null`**: No obstacle map (empty world).
+
+  **Available Maps**: We provide some example maps in the `irsim/world/map` folder and you can also use your own map by 3D datasets like [HM3D](https://aihabitat.org/datasets/hm3d/), [MatterPort3D](https://niessner.github.io/Matterport/), [Gibson](http://gibsonenv.stanford.edu/database/), etc. See [here](https://github.com/hanruihua/ir-sim/tree/features/irsim/world/map/binary_map_generator_hm3d) for more details.
+
+  ```yaml
+  # Image path
+  obstacle_map: 'hm3d_2.png'
+
+  # Procedural generator (grid size = world size / resolution)
+  obstacle_map:
+    name: perlin
+    resolution: 0.1
+    complexity: 0.12
+    fill: 0.32
+    seed: 48
+  ```
+
+(p-w-mdownsample)=
+**`mdownsample`** (`int`, default: `1`)
+: Sets the downsampling factor for the obstacle map image. 
+
+  **Performance Tip**: A higher value reduces the resolution of the obstacle map, which can optimize the simulation performance by decreasing computational load. 
+
+(p-w-fog-map)=
+**`fog_map`** (`bool`, default: `false`)
+: Enables a **fog-of-map** overlay (`FogMap`) covering the whole world. Every cell starts grey (unexplored). Each robot reveals cells along its lidar's line of sight, or within its field-of-view sector ([`fov`](#p-o-fov) / `fov_radius`) when it has no lidar, so the explored region grows as the robot navigates; revealed cells become transparent and the underlying map shows through (free space white, obstacles black, unknown grey). The explored mask is updated every step even when headless, so it can also be used as an exploration/coverage signal (`env._world.fog_map.explored_ratio`). See the `usage/24fog_world` example.
+
+(p-w-fog-map-resolution)=
+**`fog_map_resolution`** (`float`, default: obstacle map cell size, else `0.1`)
+: Fog cell size in metres, used only when `fog_map: true`. When omitted it matches the obstacle map's cell size, so the fog grid aligns with the map; it falls back to `0.1` m when there is no obstacle map. Finer values give a smoother reveal but cost more memory/time; coarser values are faster.
+::::
+
+(world-visualization)=
+::::{dropdown} **world visualization**
+
+(p-w-plot)=
+**`plot`** (`dict`, default: `{}`)
+: Specifies the plotting options for initializing the plot of the world.
+
+  **Visualization Options:**
+  - `saved_figure`: Default `dpi` is `100`; default format is `png`; default bbox_inches is `tight`. See [matplotlib.pyplot.savefig](https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.savefig.html) for more details.
+  - `figure_pixels`: Width and height of the figure in pixels. Default is `[1000, 800]`.
+  - `show_title`: Whether to show the plot title. Default is `True`.
+  - `title`: Custom title for the plot. If not specified, shows simulation time and status.
+  - `no_axis`: Whether to show the axis. Default is `False`.
+  - `tight`: Whether to use tight layout. Default is `True`.
+  - `viewpoint`: Controls the center of the camera/viewport. Default is `null`.
+    - `null`: Use the initial world bounds (no automatic panning).
+    - `[x, y]`: Keep the viewport centered at the fixed point `[x, y]`.
+    - `"<object_name>"`: Follow the object with that name (dynamic panning), e.g., `"robot_0"`.
+  - `grid`: Draw a coordinate grid on the axes. Default is `False`.
+  - `grid_interval`: Major tick spacing in metres when `grid` is on. Default is matplotlib auto ticks.
+  - `show_wave`: Draw a 2D heatmap of ``WaveField.elevation`` (the same field hulls query). Default is `False`.
+  - `wave_cmap`: Matplotlib colormap for the heatmap. Default is `ocean`.
+  - `wave_alpha`: Heatmap opacity. Default is `0.75`.
+  - `wave_resolution`: Heatmap cell size in metres. Default is `1.0`.
+
+  ```yaml
+  # Examples
+  plot:
+    viewpoint: [3, 3]        # fixed center at (3, 3)
+  # or
+  plot:
+    viewpoint: "robot_0"     # follow the object named robot_0
+  ```
+::::
+
+### Complete World Configuration Example
+
+```yaml
+world:
+  name: "world"                       # Name of the world
+  height: 10                          # Height of the world
+  width: 10                           # Width of the world
+  step_time: 0.1                      # Time interval between steps (10 Hz)
+  sample_time: 0.1                    # Time interval for rendering and data extraction (10 Hz)
+  offset: [0, 0]                      # Positional offset of the world on the x and y axes
+  step_mode: 'internal'               # State advancement mode ('internal' or 'external')
+  control_mode: 'keyboard'            # Control mode ('auto' or 'keyboard')
+  collision_mode: 'stop'              # Collision handling mode ('stop', 'unobstructed', 'unobstructed_obstacles', 'contact')
+  obstacle_map: "path/to/map.png"     # Path to the obstacle map image file
+  mdownsample: 2                      # Downsampling factor for the obstacle map
+  status: "Ready"                     # Initial display label (does not control execution)
+  plot:                               # Plotting configuration
+    show_title: true                  # Show plot title
+    title: "Custom Simulation Title"  # Custom title (optional)
+    figure_pixels: [1200, 800]        # Figure size in pixels
+    viewpoint: "robot_0"              # Camera center: fixed [x, y], object name, or null
+    saved_figure:                     # Figure saving options
+      dpi: 150                        # Resolution for saved figures
+      format: "png"                   # File format
+```
+
+````{warning}
+**`obstacle_map`**: Replace `"path/to/map.png"` with the actual file path to your obstacle map image. Ensure that the image is in a compatible format (e.g., PNG, JPEG) and properly represents obstacle locations.
+````
+
+---
+
+(object-configuration)=
+## Object Configuration
+
+All `robot` and `obstacle` entities in the simulation are configured as objects with similar parameters but may have different default values. This section outlines the configuration parameters available for these objects.
+
+(object-parameters-table)=
+### Object Parameters Table
+
+| Parameter        | Type                                             | Default          | Description                                                                                                        |
+| ---------------- | ------------------------------------------------ | ---------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `name`           | `str` or `list` of `str`                         | `None`           | Unique identifier for the object. If omitted, auto-assigned as `"<role>_<id>"`. Supports a list when `number > 1`. |
+| `number`         | `int`                                            | `1`              | Number of objects to create.                                                                                       |
+| `distribution`   | `dict`                                           | `{name: manual}` | Defines how multiple objects are distributed. Support name: `manual`, `random`, `circle`                           |
+| `kinematics`     | `dict`                                           | `None`           | Kinematic model of the object. Supported names: `diff`, `acker`, `omni`, `omni_angular`. An object without kinematics is static. |
+| `shape`          | `dict`                                           | `None`           | Shape of the object. If omitted, IR-SIM creates a circle with radius `1`; an explicit `{name: circle}` uses radius `0.2`. Supported names: `circle`, `rectangle`, `polygon`, `linestring`, `compound`. |
+| `state`          | `list` of `float`                                | `[1, 1, 0]` for manual distribution | Initial state vector of the object.                                                                                |
+| `velocity`       | `list` of `float`                                | `[0] * action_dim` | Initial velocity vector. Length matches the kinematics action dimension (2 for `diff`/`omni`/`acker`, 3 for `omni_angular`). |
+| `goal`           | `list` of `float` or `list` of `list` of `float` | `[1, 9, 0]` for manual distribution | Goal state(s) vector.                                                                                              |
+| `behavior`       | `dict`                                           | `None`           | Behavior configuration dictating object movement. Support name: `dash`, `rvo`, `sfm` (availability depends on `kinematics`; see [Configure behavior](../usage/configure_behavior.md))   |
+| `group_behavior` | `dict`                                           | `None`           | Group-level behavior for objects in the same group. Support name: `orca`, `sfm`                                    |
+| `role`           | `str`                                            | inferred from top-level key | Role of the object in the simulation (`"robot"` under `robot`, `"obstacle"` under `obstacle`).                    |
+| `color`          | `str`                                            | inferred from role and kinematics | Visualization color of the object in the simulation. Robots default to green (`#009E73`, or `#117733` for `acker`); obstacles default to black, or orange (`#E69F00`) for a pushable body without kinematics (see [`mass`](#p-o-mass)). `'cycle'` gives each object of a group the next color of the palette cycle. All defaults are parameters of `irsim.config.palette_param`. |
+| `static`         | `bool`                                           | derived          | `False` when kinematics are present; otherwise `True` unless a finite [`mass`](#p-o-mass) makes the object pushable. Set `true` to freeze any object. |
+| `mass`           | `float`                                          | `1.0` with kinematics, `inf` without | Mass in kg for the `contact` collision mode; with `friction` it sets the ground friction force that decides what a robot can push, `inf` never moves. A finite mass on an object without kinematics makes it a pushable body. |
+| `friction`       | `float`                                          | `0.5`            | Ground friction coefficient for the `contact` collision mode: slows a released body to a stop and, with `mass`, decides whether a robot can push it and whether it slides along a wall. |
+| `inertia`        | `float`                                          | from shape and mass | Moment of inertia about the center of mass in kg·m² for the `contact` collision mode, from the shape and mass unless set; an off-center push turns a pushable body through it. |
+| `restitution`    | `float`                                          | `0`              | Bounciness of the material for the `contact` collision mode, `0` (no bounce) to `1` (elastic); only passive bodies bounce. |
+| `vel_min`        | `list` of `float`                                | `[-1] * action_dim` | Command-vector lower clip. Velocity for `diff`/`omni`/`acker`; **per-jet thrust [N] for `usv`** (usually `[0, 0]`, jets cannot reverse). |
+| `vel_max`        | `list` of `float`                                | `[1] * action_dim`  | Command-vector upper clip. Velocity for `diff`/`omni`/`acker`; **per-jet thrust [N] for `usv`** (WAM-V default `204`, keep equal to `kinematics.twj_max`). |
+| `acce`           | `list` of `float`                                | `[inf] * action_dim` | Acceleration limits. Length matches the kinematics action dimension.                                               |
+| `angle_range`    | `list` of `float`                                | `[-pi, pi]`      | Range of orientation angles in radians.                                                                            |
+| `goal_threshold` | `float`                                          | `0.1`            | Threshold distance to determine goal arrival.                                                                      |
+| `sensors`        | `list` of `dict`                                 | `None`           | List of sensor configurations attached to the object. Support name: `lidar2d`, `fmcw_lidar2d`, `contact2d`                     |
+| `arrive_mode`    | `str`                                            | `'position'`     | Mode for arrival detection.                                                                                        |
+| `description`    | `str`                                            | `None`           | Image description or label for the object.                                                                         |
+| `group`          | `int`                                            | `0`              | Group identifier for organizational purposes, allowing objects to be grouped.                                      |
+| `group_name`     | `str`                                            | `None`           | Group name used for organization, allowing objects to be managed by group name.                                      |
+| `unobstructed`   | `bool`                                           | `False`          | Indicates if the object ignores collisions.                                                                        |
+| `plot`           | `dict`                                           | `{}`             | Plotting options for object visualization.                                                                         |
+| `state_dim`      | `int`                                            | `None`           | Dimension of the state vector.                                                                                     |
+| `vel_dim`        | `int`                                            | `None`           | Dimension of the velocity vector.                                                                                  |
+| `fov`            | `float`                                          | `None`           | Field of view angle in radians for the object's sensors, clipped to `[0, 2*pi]`.                                                          |
+| `fov_radius`     | `float`                                          | `None`           | Field of view radius for the object's sensors.                                                                     |
+
+### Detailed Parameter Descriptions
+
+(object-properties)=
+::::{dropdown} **object properties**
+
+```{card} Overview
+:class-card: sd-bg-light sd-rounded-3
+- **`number`**: How many objects to create
+- **`distribution`**: Object placement (`manual`, `random`, `circle`)
+- **`state`**: Initial position (`[x, y, θ]`)
+- **`goal`**: Target destination (`[x, y, θ]`)
+- **`velocity`**: Initial speed (`[v, ω]`, `[forward, lateral]`, `[v, φ]`)
+- **`state_dim`**: State vector size (auto: 3 or 4)
+- **`vel_dim`**: Velocity vector size (auto: 2)
+- **`name`**: Unique identifier for the object.
+- **`role`**: Object type (`robot`, `obstacle`)
+```
+
+(p-o-number)=
+**`number`** (`int`, default: `1`)
+: Specifies the number of objects to create using the given configuration.
+
+  ```yaml
+  # Example usage
+  robot:
+    - number: 5
+  ```
+
+(p-o-distribution)=
+**`distribution`** (`dict`, default: `{name: manual}`) ([source](https://ir-sim.readthedocs.io/en/dev/irsim.world.html#irsim.world.object_factory.ObjectFactory.generate_state_list))
+: Defines how multiple objects are spatially distributed when `number` is greater than `1`. 
+
+  **Options:**
+  - `'manual'`: Manually specify initial states and goals for each object. 
+    - In this case, the `state` (or goal) parameters must be provided for each object. If the provided list is shorter than the number of objects, the last state (or goal) is repeated.
+
+    ```yaml
+    # Example usage
+    distribution: {name: 'manual'}
+    state: [[1, 1, 0], [2, 2, 0], [3, 3, 0]]
+    goal: [[9, 9, 0], [8, 8, 0], [7, 7, 0]]
+    ```
+
+  - `'random'`: Randomly distribute objects within specified ranges. Points are rejection-sampled so every pair is at least `min_distance` apart in the xy plane. Optional parameters:
+    - `range_low` (list): Lower bounds `[x, y, theta]` for random distribution. Defaults to the world bounds inset by `0.5`, i.e. `[offset_x + 0.5, offset_y + 0.5, -pi]`.
+    - `range_high` (list): Upper bounds `[x, y, theta]` for random distribution. Defaults to `[offset_x + width - 0.5, offset_y + height - 0.5, pi]`.
+    - `min_distance` (float): Minimum pairwise xy distance between sampled points. Default is `1.0`.
+
+    ```yaml
+    # Example usage
+    distribution: {name: 'random', range_low: [0.5, 0.5, -3.14], range_high: [9.5, 9.5, 3.14], min_distance: 1.0}
+    ```
+
+  - `'circle'`: Arrange objects in a circular formation around a specified center. Optional parameters:
+    - `center` (list): Center coordinates `[x, y, theta]` of the circle. Defaults to the world center `[offset_x + width / 2, offset_y + height / 2, 0]`.
+    - `radius` (float): Radius of the circle. Defaults to `min(width, height) / 2 - 0.5` so the circle sits inside the world with a small margin.
+
+    ```yaml
+    # Example usage
+    distribution: {name: 'circle', center: [5, 5, 0], radius: 4.0}
+    ```
+
+(p-o-state)=
+**`state`** (`list` of `float`, default: `[1, 1, 0]` for manual distribution)
+: Defines the initial state of the object, typically in the format `[x, y, theta]`, where `theta` represents the orientation in radians. If the provided state has more elements than required, extra elements are truncated; if fewer, missing values are filled with zeros. Random and circle distributions generate states from their distribution parameters.
+
+  ```yaml
+  # Example usage
+  state: [1.0, 1.0, 0.2]
+  ```
+
+(p-o-velocity)=
+**`velocity`** (`list` of `float`, default: `[0] * action_dim`)
+: Specifies the initial velocity (list) of the object. The length must match the kinematics action dimension. The format depends on the kinematics model:
+
+  **Format by Kinematics:**
+  - For `'diff'`: `[v, omega]`, where `v` is linear velocity and `omega` is angular velocity.
+  - For `'omni'`: `[forward, lateral]`, body-frame velocities (forward and lateral relative to heading).
+  - For `'acker'`: Typically `[v, phi]`, where `v` is linear velocity and `phi` is steering angle.
+
+  ```yaml
+  # Example usage
+  velocity: [1.0, 0.5]
+  ```
+
+(p-o-goal)=
+**`goal`** (`list` of `float` or `list` of `list` of `float`, default: `[1, 9, 0]` for manual distribution)
+: Sets the target state or position the object should move toward. Used in conjunction with behaviors to guide the object's navigation. The format is `[x, y, theta]` or `[[x, y, theta], [x, y, theta], ...]` for multiple goals. Random and circle distributions generate goals from their distribution parameters.
+
+  ```yaml
+  # Example usage - single goal
+  goal: [10.0, 10.0, 0.2]
+  ```
+
+  **Note**: For multiple goals for the single object (Pay attention to the difference between the single goal for multiple objects and multiple goals for the single object):
+
+  ```yaml
+  # Example usage - multiple goals
+  goal: 
+    - [[10.0, 10.0, 0.2], [5.0, 4.0, 1.0], [3.0, 3.0, 2.0]]
+  ```
+
+(p-o-state-dim)=
+**`state_dim`** (`int`, default: `None`)
+: Explicitly defines the dimension of the state vector. When not specified, this is automatically inferred from the kinematics model. For most use cases, the default inference is sufficient.
+
+  **Common Values:**
+  - `3`: For 2D position and orientation `[x, y, theta]`
+  - `4`: For vehicles with additional state (e.g., Ackermann with `[x, y, theta, steer_angle]`)
+
+  ```yaml
+  # Example usage
+  state_dim: 3
+  ```
+
+(p-o-vel-dim)=
+**`vel_dim`** (`int`, default: `None`)
+: Explicitly defines the dimension of the velocity vector. When not specified, this is automatically inferred from the kinematics model. The velocity dimension depends on the control inputs for the specific kinematics.
+
+  **Common Values:**
+  - `2`: For differential drive `[v, omega]` or omnidirectional `[forward, lateral]`
+  - `3`: For omnidirectional with angular control `[forward, lateral, yaw_rate]`
+
+  ```yaml
+  # Example usage
+  vel_dim: 2
+  ```
+
+(p-o-group)=
+**`group`** (`int`, default: `0`)
+: Specifies a group identifier for organizational purposes, allowing objects to be categorized and managed together. Objects with the same group ID can be treated as a cohesive unit for certain operations.
+
+  ```yaml
+  # Example usage
+  group: 1
+  ```
+
+(p-o-group-name)=
+**`group_name`** (`str`, default: `None`)
+: Specifies a group name for organizational purposes, allowing objects to be categorized and managed together. Objects with the same group name can be treated as a cohesive unit for certain operations.
+
+  ```yaml
+  # Example usage
+  group_name: "robot_flow"
+  ```
+
+(p-o-name)=
+**`name`** (`str` or `list` of `str`, default: `None`)
+: Sets a unique identifier for the object. If not provided, the name defaults to "<role>_<id>" (e.g., `robot_0`, `obstacle_3`). Names must be unique across all objects in the environment; duplicates will raise a `ValueError` during initialization.
+
+  - When creating multiple objects (`number > 1`), you can provide a list of names. If the provided list is shorter than the number of objects, the last name is repeated for remaining objects; ensure uniqueness to avoid errors.
+
+  ```yaml
+  # Example usage - single object
+  robot:
+    - name: "r1"
+      kinematics: {name: 'diff'}
+      shape: {name: 'circle', radius: 0.2}
+      state: [1, 1, 0]
+      goal: [9, 9, 0]
+  ```
+
+  ```yaml
+  # Example usage - multiple objects with explicit names
+  robot:
+    - number: 3
+      name: ["r1", "r2", "r3"]
+      distribution: {name: 'circle', center: [5, 5, 0], radius: 4.0}
+      kinematics: {name: 'diff'}
+      shape: {name: 'circle', radius: 0.2}
+  ```
+
+  ```{note}
+  Do not confuse the object-level `name` with the `name` keys inside dictionaries like `shape`, `kinematics`, or `behavior`. The latter specify the type of that component, not the object's identifier.
+  ```
+
+  **`role`** (`str`, inferred from top-level key)
+  : Defines the object's role in the simulation. In YAML configurations, this is inferred from the section it belongs to and normally does not need to be set manually:
+  - `'robot'`: An active entity typically controlled by behaviors or input commands.
+  - `'obstacle'`: A passive entity that may or may not move but is considered during collision detection.
+::::
+
+(object-kinematics)=
+::::{dropdown} **object kinematics**
+
+```{card} Kinematics Models
+:class-card: sd-bg-light sd-rounded-3
+- **`diff`**: Differential drive, controlled by linear speed and angular velocity (`[v, omega]`)
+- **`omni`**: Omnidirectional, controlled by body-frame forward and lateral speed (`[forward, lateral]`)
+- **`omni_angular`**: Omnidirectional with angular control, controlled by body-frame speeds and yaw rate (`[forward, lateral, yaw_rate]`)
+- **`acker`**: Ackermann steering, controlled by linear speed and steering angle (`[v, phi]`)
+
+Velocity commands are expressed in the robot's own frame, while `[vx, vy]` describes the rigid-body motion in the world frame. A holonomic planner such as RVO, SFM or ORCA plans in the world frame, so its velocity is converted at that boundary. An external controller that plans in the world frame converts the same way:
+
+```python
+env.step(env.robot.vel_world2body(world_vel))
+```
+
+`omni` rotates `[vx, vy]` into `[forward, lateral]`, and `diff` maps it to `[linear, angular]` using the robot's angular limit and the world step time. `acker` and `omni_angular` are commanded directly, and a world-frame translation does not determine their command, so the conversion raises for them.
+```
+
+(p-o-kinematics)=
+**`kinematics`** (`dict`, default: `None`)
+: Sets the kinematic model governing the object's movement.
+
+  **Options:**
+  - `'diff'`: Differential drive robot, suitable for robots that can rotate in place (e.g., two-wheel robots). This type of robot is controlled by linear and angular velocity. Optional parameters:
+    - `noise` (bool): whether to add noise to the velocity commands. Default is `False`.
+    - `alpha` (list): noise parameters for velocity commands. Default is `[0.03, 0, 0, 0.03]`.    
+
+    ```yaml
+    # Example usage
+    kinematics: {name: 'diff', noise: True, alpha: [0.03, 0, 0, 0.03]}
+    ```
+
+  - `'omni'`: Omnidirectional movement, allowing movement in any direction without changing orientation. This type of robot is controlled by body-frame velocities `[forward, lateral]`. Orientation (theta) is preserved but not updated. Optional parameters:
+    - `noise` (bool): whether to add noise to the velocity commands. Default is `False`.
+    - `alpha` (list): noise parameters for velocity commands `[alpha_forward, alpha_lateral]`. Default is `[0.03, 0.03]`.   
+
+    ```yaml
+    # Example usage
+    kinematics: {name: 'omni', noise: True, alpha: [0.03, 0.03]}
+    ```
+
+  - `'omni_angular'`: Omnidirectional movement with angular velocity control. Extends `omni` by adding a yaw rate channel that integrates orientation (theta). This type of robot is controlled by body-frame velocities `[forward, lateral, yaw_rate]`. Optional parameters:
+    - `noise` (bool): whether to add noise to the velocity commands. Default is `False`.
+    - `alpha` (list): noise parameters for velocity commands `[alpha_forward, alpha_lateral, alpha_yaw]`. Default is `[0.03, 0.03, 0.03]`.
+
+    ```yaml
+    # Example usage
+    kinematics: {name: 'omni_angular', noise: True, alpha: [0.03, 0.03, 0.03]}
+    ```
+
+  - `'acker'`: Ackermann steering, typical for car-like vehicles requiring a turning radius.
+    - `noise` (bool): whether to add noise to the velocity commands. Default is `False`.
+    - `alpha` (list): noise parameters for velocity commands. Default is `[0.03, 0, 0, 0.03]`.  
+    - `mode` (str): steering mode, either `steer` or `angular`. Default is `steer`.
+      - `steer`: the object is controlled by linear and steer angle.
+      - `angular`: the object is controlled by linear and angular velocity. 
+
+    ```yaml
+    # Example usage
+    kinematics: {name: 'acker', noise: True, alpha: [0.03, 0, 0, 0.03], mode: 'steer'}
+    ```
+  
+
+  - `tau` (`float`, every model, default: the world's `drive_tau`, `0`): drive lag in seconds, used by `collision_mode: 'contact'` only. The robot's velocity then follows its command as a first-order response, as the PD-driven wheels of a base do in Isaac Sim, so a step in the command takes about `3 tau` to complete and a robot cannot reverse within a step; `0` tracks the command instantly, which matches Isaac's stiff default drives at this step size, and `0.2` models a small base with a soft velocity loop. A stalled robot keeps pushing at its full command while its body velocity reads zero. The other collision modes always track commands instantly.
+
+    ```yaml
+    # Example usage
+    kinematics: {name: 'diff', tau: 0.3}
+    ```
+
+  Any other key under `kinematics` is passed to the handler's constructor. This is how a model registered with `@register_kinematics` receives its own parameters, e.g. `kinematics: {name: 'slip', ratio: 0.5}`.
+
+(p-o-vel-min)=
+**`vel_min`** (`list` of `float`, default: `[-1, -1]`) and **`vel_max`** (`list` of `float`, default: `[1, 1]`)
+: Clip each component of the command vector. For `diff`, `omni`, and `acker` this is a velocity limit (m/s or rad/s): the second entry of `diff`/`acker` is angular or steering, and reactive behaviors (`rvo`, `sfm`, `orca`) head for the goal at the first, translational, limit. For `kinematics: usv` the same keys are **per-jet waterjet thrust in newtons**, not speed: `env.step([T_port, T_stbd])` is clipped to `[vel_min, vel_max]`, WAM-V defaults are `vel_min: [0, 0]` and `vel_max: [204, 204]` (Klinger 2017 \(T_{\mathrm{wj,max}}\)), and those values should match `kinematics.twj_max`. The body velocities `u, v` in the 6-D USV state are still metres per second.
+
+(p-o-acce)=
+**`acce`** (`list` of `float`, default: `[inf, inf]`)
+: Defines acceleration limits as the maximum change in velocity per time step for each control dimension. This parameter simulates the physical limitations of the object's motion capabilities.
+
+(p-o-angle-range)=
+**`angle_range`** (`list` of `float`, default: `[-pi, pi]`)
+: Specifies the allowed range of orientation angles `[min, max]` in radians. The object's orientation angle `theta` is wrapped within this range to maintain consistency.
+
+(p-o-goal-threshold)=
+**`goal_threshold`** (`float`, default: `0.1`)
+: Determines the proximity threshold to the goal at which the object is considered to have arrived. Once within this distance, arrival behaviors or state changes may be triggered.
+
+  ```yaml
+  # Example usage
+  vel_min: [-1, -1]
+  vel_max: [1, 1]
+  acce: [0.5, 0.1]
+  angle_range: [-pi, pi]
+  goal_threshold: 0.1
+  ```
+
+  ````{warning}
+    When using the `acker` kinematics model, ensure that the `wheelbase` parameter is set in the `shape` configuration; a `wheelbase` under `kinematics` overrides it.
+  ````
+::::
+
+(object-shape)=
+::::{dropdown} **object shape**
+
+```{card} Overview
+:class-card: sd-bg-light sd-rounded-3
+- **`circle`**: Round shape (`radius`, `center`)
+- **`rectangle`**: Rectangular shape (`length`, `width`, `wheelbase`)
+- **`polygon`**: Custom shape (`vertices`, `is_convex`)
+- **`compound`**: Fixed collection of solid parts (`parts`, `pose`)
+- **`linestring`**: Line segments (`vertices`)
+```
+
+(p-o-shape)=
+**`shape`** (`dict`, default: `{name: circle}`)
+: Determines the geometric shape used for collision detection and visualization in the original state. If `shape` is omitted entirely, the object falls back to a circle of `radius: 1` centered at `[0, 0]`; the `radius: 0.2` below is the default only when a `circle` shape is given without an explicit `radius`.
+
+  **Supported Shapes:**
+
+  - **`'circle'`**: Represents a circular shape.
+    - **`radius`** (`float`): Radius of the circle. Default is `0.2`.
+    - **`center`** (`list`): Body-frame `[x, y]` offset of the circle center. It rotates with the object's heading. Default is `[0, 0]`. For an Ackermann circle, the effective center is additionally shifted forward by `wheelbase / 2`.
+    - **`random_shape`** (`bool`): Whether to generate a random radius. Default is `False`.
+    - **`radius_range`** (`list`): Range `[min_radius, max_radius]` for random radius generation if `random_shape` is `True`. Default is `[0.1, 1.0]`.
+    - **`wheelbase`** (`float`): Wheelbase of the Ackermann steering vehicle. Required when using `'acker'` kinematics. Default is `None`.
+
+    ```yaml
+    # Example usage
+    shape: {name: 'circle', radius: 0.2, center: [0, 0]}
+    ```
+
+  - **`'rectangle'`**: Represents a rectangular shape.
+    - **`length`** (`float`): Length of the rectangle along the x-axis. Default is `1.0`.
+    - **`width`** (`float`): Width of the rectangle along the y-axis. Default is `1.0`.
+    - **`wheelbase`** (`float`): Wheelbase of the Ackermann steering vehicle. Required when using `'acker'` kinematics. Default is `None`.
+
+    ```yaml
+    # Example usage
+    shape: {name: 'rectangle', length: 1.0, width: 0.5}
+    ```
+  
+  - **`'polygon'`**: Represents a polygonal shape defined by a list of vertices.
+    - **`vertices`** (`list`): List of vertices defining the polygon in the format `[[x1, y1], [x2, y2], ...]`, if not provided, a random polygon will be generated.
+    - **`random_shape`** (`bool`): Whether to generate a series of random polygons. Default is `False`.
+    - **`is_convex`** (`bool`): Whether to generate a series of random convex polygons. Default is `False`.
+      
+    ```yaml
+    # Example usage
+    shape:
+      name: 'polygon'
+      vertices: 
+        - [4.5, 4.5]
+        - [5.5, 4.5]
+        - [5.5, 5.5]
+        - [4.5, 5.5]
+    ```
+
+    ```yaml
+    # Example usage - random polygon
+    shape:
+      - {name: 'polygon', random_shape: true, center_range: [5, 10, 40, 30], avg_radius_range: [0.5, 2], irregularity_range: [0, 1], spikeyness_range: [0, 1], num_vertices_range: [4, 5]} 
+    ```
+
+  - **`'compound'`**: Represents one rigid shape assembled from fixed solid parts.
+    - **`parts`** (`list`): Non-empty list of `circle`, `rectangle`, or `polygon` shape dictionaries.
+    - **`pose`** (`list`): Optional `[x, y, theta]` pose of a part relative to the owning object's coordinate-frame origin. Default is `[0, 0, 0]`, and `theta` is in radians.
+
+    ```yaml
+    # Example usage - compound robot body
+    shape:
+      name: compound
+      parts:
+        - {name: rectangle, length: 0.8, width: 0.3}
+        - {name: rectangle, length: 0.3, width: 0.8, pose: [-0.25, 0, 0]}
+    ```
+  
+  - **`'linestring'`**: Represents a line string shape defined by a list of vertices. Similar to a polygon but generates a line string.
+    - **`vertices`** (`list`): List of vertices defining the line string in the format `[[x1, y1], [x2, y2], ...]`.
+    - **`random_shape`** (`bool`): Whether to generate a series of random line strings (polygon). Default is `False`.
+    - **`is_convex`** (`bool`): Whether to generate a series of random convex line strings (polygons). Default is `True`.
+
+    ```yaml
+    # Example usage
+    shape:
+      name: 'linestring'
+      vertices: 
+        - [4.5, 4.5]
+        - [5.5, 4.5]
+        - [5.5, 5.5]
+        - [4.5, 5.5]
+    ``` 
+
+    ```yaml
+    # Example usage - random linestring
+    shape:
+      - {name: 'linestring', random_shape: true, center_range: [5, 10, 40, 30], avg_radius_range: [0.5, 2], irregularity_range: [0, 1], spikeyness_range: [0, 1], num_vertices_range: [4, 5]} 
+    ```
+::::
+
+(object-behavior)=
+::::{dropdown} **object behavior**
+
+```{card} Behavior Systems
+:class-card: sd-bg-light sd-rounded-3
+- **`behavior`**: `dash` (move toward the goal directly), `rvo` (reciprocal velocity obstacles), `sfm` (social force model)
+- **`group_behavior`**: `orca` (optimal reciprocal collision avoidance), `sfm` (social force model for a whole group)
+- **`static`**: Immobile objects (`True`/`False`)
+```
+
+(p-o-behavior)=
+**`behavior`** (`dict`, default: `None`)
+: Configures the movement behavior of the object. Behaviors can be simple or complex and may include additional parameters.
+
+  **Options:**
+  - `'dash'`: Moves directly toward the goal at maximum allowable speed.
+    - `wander` (bool/`False`): Whether to add random wandering to the movement. If `True`, the object will have a random goal when reach current goal.
+    - `loop` (bool/`False`): Whether to loop through waypoints continuously. If `True`, the object will restart from the first waypoint after reaching the last one.
+    - `target_roles` (str/`all`): Only the objects with the target role will be applied to the behavior. Currently, you can set the target role as `robot` or `obstacle`.
+    - `range_low`(list/`[0, 0, -3.14]`): Lower bounds for random wandering.
+    - `range_high`(list/`[10, 10, 3.14]`): Upper bounds for random wandering.
+    - `angle_tolerance` (float/`0.1`): Tolerance for orientation alignment with `diff`, `acker`, and `omni_angular` kinematics.
+
+    **Example:**
+    ```yaml
+    behavior: {name: 'dash', wander: True, range_low: [0, 0, -3.14], range_high: [10, 10, 3.14], angle_tolerance: 0.1}
+    ```
+
+  - `'rvo'`: Implements Reciprocal Velocity Obstacles for collision avoidance among multiple moving objects. Support kinematics are `diff` and `omni`.
+    - `wander` (bool/`False`): Whether to add random wandering to the movement. If `True`, the object will have a random goal when reach current goal.
+    - `loop` (bool/`False`): Whether to loop through waypoints continuously. If `True`, the object will restart from the first waypoint after reaching the last one.
+    - `target_roles` (str/`all`): Only the objects with the target role will be applied to the behavior. Currently, you can set the target role as `robot` or `obstacle`.
+    - `range_low`(list/`[0, 0, -3.14]`): Lower bounds for random wandering.
+    - `range_high`(list/`[10, 10, 3.14]`): Upper bounds for random wandering.
+    - `vxmax` (float/`1.5`): Maximum linear velocity in x axis.
+    - `vymax` (float/`1.5`): Maximum linear velocity in y axis.
+    - `acce` (float/`1.0`): Maximum acceleration.
+    - `factor` (float/`1.0`): Factor for the RVO algorithm.
+    - `mode` (str/`rvo`): Mode for RVO algorithm, either `rvo`, `hrvo`, or `vo`.
+      - `rvo`: Reciprocal Velocity Obstacles. For multi-agent collision avoidance.
+      - `hrvo`: Hybrid Reciprocal Velocity Obstacles. Combine RVO with VO to avoid deadlocks.
+      - `vo`: Velocity Obstacles. For obstacle avoidance.
+    - `neighbor_threshold` (float/`3.0`): Distance threshold to filter the neighbors to the self robot.
+
+    **Example:**
+    ```yaml
+    behavior: {name: 'rvo', vxmax: 1.5, vymax: 1.5, acce: 1.0, factor: 1.0, mode: 'rvo', wander: False}
+    ```
+
+  - `'sfm'`: Implements the Social Force Model for reactive pedestrian-style avoidance. Supported kinematics are `diff` and `omni`.
+
+(p-o-group-behavior)=
+**`group_behavior`** (`dict`, default: `None`)
+: Group-level behavior for all objects within the same group. This is more efficient for coordinated behaviors (like swarm or crowd simulation) as it computes actions for all members in a single step. Must include `name` plus behavior-specific parameters.
+
+  **Options:**
+  - `'orca'`: Optimal Reciprocal Collision Avoidance (ORCA) for multi-agent navigation. Requires `pyrvo` package (`pip install pyrvo`). The simulation will attempt to import it only when this behavior is used. Members avoid each other and the outside objects `target_roles` selects, the obstacles by default: static ones (`timeHorizonObst` sets how far ahead they are considered) and moving ones.
+    - `wander` (bool/`False`): Whether to add random wandering to the movement. If `True`, the object will have a random goal when reach current goal.
+    - `range_low`(list/`[0, 0, -3.14]`): Lower bounds for random wandering.
+    - `range_high`(list/`[10, 10, 3.14]`): Upper bounds for random wandering.
+    - `neighborDist` (float/`15.0`): Max distance to search for neighbors.
+    - `maxNeighbors` (int/`10`): Max number of neighbors to consider.
+    - `timeHorizon` (float/`20.0`): Time horizon for computing safe velocities with respect to other agents.
+    - `timeHorizonObst` (float/`10.0`): Time horizon for computing safe velocities with respect to static obstacles.
+    - `safe_radius` (float/`0.1`): Additional safety radius padding.
+    - `maxSpeed` (float/`None`): Speed cap of the agents; members head for their goals at this speed. It is never above the fastest speed a member can hold in every direction (the smaller `vel_max` component for `omni`, the linear limit for `diff`), which is also the default when `None`.
+    - `target_roles` (str/`'obstacle'`): Which outside objects members avoid: `'all'`, `'robot'` or `'obstacle'`; `'all'` makes the crowd give way to robots too.
+
+    **Example:**
+    ```yaml
+    group_behavior: 
+      name: 'orca'
+      neighborDist: 10.0
+      maxNeighbors: 10
+      timeHorizon: 10.0
+      timeHorizonObst: 10.0
+      safe_radius: 0.1
+    ```
+
+  - `'sfm'`: Social Force Model for the whole group, stepped from one state snapshot in a vectorised pass. Supported kinematics are `diff` and `omni`. Takes every per-object `sfm` parameter with the same names and defaults, plus the social-group parameters below; see [Configure behavior](../usage/configure_behavior.md#sfm-as-a-group-behavior).
+    - `social_groups` (list/`None`): Member indices, in YAML group order, of pedestrians walking together; each member in at most one group.
+    - `force_factor_coherence` (float/`2.0`): Weight of the pull toward the group's centre of mass.
+    - `force_factor_group_repulsion` (float/`1.0`): Weight of the push between group members that come too close.
+    - `group_repulsion_threshold` (float/`None`): Centre distance below which members repel; `None` uses the sum of their radii.
+    - `force_factor_gaze` (float/`3.0`): Weight of the brake applied when the other members leave the field of view.
+    - `gaze_vision_angle` (float/`90.0`): Half-angle in degrees of the field of view around the walking direction.
+    - `target_roles` (str/`'obstacle'`): Which outside objects members react to: `'all'`, `'robot'` or `'obstacle'`.
+
+    **Example:**
+    ```yaml
+    group_behavior:
+      name: 'sfm'
+      vmax: 1.0
+      force_factor_social: 4.0
+      social_groups: [[0, 1], [2, 3, 4]]
+    ```
+
+(p-o-static)=
+**`static`**:
+  A boolean indicating whether the object is static (does not move). Static objects ignore kinematics and behaviors, remaining at their initial state, and contacts never move them. Sensors mounted on a static object are still updated and redrawn every step, so a fixed lidar keeps scanning moving obstacles. When not set, an object with kinematics is not static, and an object without kinematics is static unless a finite [`mass`](#p-o-mass) makes it pushable.
+
+  **Example:**
+  ```yaml
+  static: True
+  ```
+
+(p-o-mass)=
+**`mass`** (`float`, default: `1.0` with kinematics, `inf` without)
+: Mass in kilograms, used by the [`contact`](#p-w-collision-mode) collision mode. With [`friction`](#p-o-friction) it gives the object's ground friction force `friction * mass * gravity`: a robot pushes a body while its own value is at least that of the body and everything it pushes ahead, so with equal materials it pushes up to its own mass in boxes and stalls against more, and two passive bodies that collide share the overlap in inverse proportion to their masses, as in an inelastic collision. An object with `inf` mass never moves. Objects without kinematics are immovable by default; giving one a finite mass turns it into a pushable body that does not move on its own. A list gives each object of a `number` group its own mass. Such a body is drawn in orange (`#E69F00`, colour-blind safe and distinct from black in grayscale print) unless `color` is set; objects with kinematics keep their usual color. Static objects ignore their mass. In other collision modes the value is unused, but an obstacle given a mass is still stepped and redrawn as a pushable body.
+
+  ```yaml
+  # Example usage
+  obstacle:
+    - shape: {name: 'rectangle', length: 0.8, width: 0.8}
+      state: [3, 5, 0]
+      mass: 2.0            # pushable box
+    - shape: {name: 'rectangle', length: 0.4, width: 6}
+      state: [8, 5, 0]     # no mass: immovable wall
+  ```
+
+(p-o-friction)=
+**`friction`** (`float`, default: the world's `friction`, `0.5`)
+: Coulomb friction coefficient with the ground, used by the [`contact`](#p-w-collision-mode) collision mode; the default is the material value physics engines such as PhysX use. A released body decelerates by `friction * gravity`, 9.81 m/s² by default, until it stops, about 5 cm from 1 m/s, and `0` lets it slide forever. With [`mass`](#p-o-mass) it decides whether a robot can push a body, and for a robot it also caps how fast the wheels can change its speed, `friction * gravity` per second, so a robot with `0` cannot move. A body pressed against a wall slides along it only when the push leaves the friction cone of the two surfaces (their mean coefficient); a robot always slides. A list gives each object of a `number` group its own coefficient.
+
+  ```yaml
+  # Example usage
+  obstacle:
+    - shape: {name: 'rectangle', length: 0.8, width: 0.8}
+      state: [3, 5, 0]
+      mass: 2.0
+      friction: 0.1        # slides far once released
+  ```
+
+(p-o-inertia)=
+**`inertia`** (`float`, default: from the shape and mass)
+: Moment of inertia about the object's center of mass, the centroid of its shape, in kg·m², used by the [`contact`](#p-w-collision-mode) collision mode to turn a pushable body when a push misses its center: the contact point and normal give a torque that this value resists, as in a physics engine. Unless set it is computed from the shape and [`mass`](#p-o-mass): `m r² / 2` for a circle, `m (l² + w²) / 12` for a rectangle, and the exact polar moment of the area for a polygon; other shapes use a disc of the bounding radius. A robot keeps its heading while it pushes; stopped by a wall or a load it cannot move, an off-center contact deflects it. A spinning body slows under [`friction`](#p-o-friction) like a sliding one. A list gives each object of a `number` group its own value.
+
+  ```yaml
+  # Example usage
+  obstacle:
+    - shape: {name: 'rectangle', length: 0.8, width: 0.8}
+      state: [3, 5, 0]
+      mass: 2.0
+      inertia: 1.0         # harder to spin than its shape suggests
+  ```
+
+(p-o-restitution)=
+**`restitution`** (`float`, default: the world's `restitution`, `0`)
+: Bounciness of the object's material, used by the [`contact`](#p-w-collision-mode) collision mode: `0` is a perfectly inelastic contact, the default material of physics engines such as Isaac Lab, and `1` an elastic one. Two bodies that collide separate at the mean of their two values times their approach speed, on top of being pushed apart. Only passive bodies bounce, since a robot's drive re-asserts its velocity every step, and only off a contact that could move them, so a box a robot cannot push is not hammered forward. A list gives each object of a `number` group its own value.
+
+  ```yaml
+  # Example usage
+  obstacle:
+    - shape: {name: 'circle', radius: 0.3}
+      state: [3, 5, 0]
+      mass: 0.5
+      friction: 0.05
+      restitution: 0.8     # a ball that bounces off walls
+  ```
+::::
+
+(object-sensor)=
+::::{dropdown} **object sensors**
+
+```{card} Overview
+:class-card: sd-bg-light sd-rounded-3
+- **`lidar2d`**: 2D laser scanner (`range_min/max`, `angle_range`, `noise`)
+- **`fmcw_lidar2d`**: 2D FMCW LiDAR (`range/radial_velocity`, `motion_compensate`, Doppler visualization)
+- **`contact2d`**: Contact sensor of the `contact` collision mode (contact points and forces, `force_scale` visualization)
+- **`fov`**: Field of view angle (radians)
+- **`fov_radius`**: Maximum detection distance
+```
+
+(p-o-sensors)=
+**`sensors`**:
+  Attaches sensors to the object for environmental perception. Each sensor is defined by a dictionary indicating its type and specific parameters. Currently supported sensor `name` (or `type`) include:
+  - `lidar2d`: 2D LiDAR sensor for distance measurements. Parameters include:
+    - `range_min` (float/`0.0`): Minimum detection range; a closer return is reported at this value.
+    - `range_max` (float/`10.0`): Maximum detection range.
+    - `angle_range` (float/`pi`): Total angle range of the sensor, clipped to `[0, 2*pi]` (`6.283185` gives a full 360° scan).
+    - `number` (int/`100`): Number of laser beams.
+    - `scan_time` (float/`0.1`): Time taken for one complete scan.
+    - `noise` (bool/`False`): Whether noise is added to measurements.
+    - `std` (float/`0.2`): Standard deviation for range noise on hit beams if `noise` is `True`; noisy ranges stay within `[range_min, range_max]`.
+    - `angle_std` (float/`0.0`): Standard deviation of each beam's direction if `noise` is `True`; `0` keeps the directions exact.
+    - `offset` (list/`[0, 0, 0]`): Offset of the sensor from the object's position (x, y, theta).
+    - `has_velocity` (bool/`False`): Whether measures the lidar point velocity.
+
+    Visualization options go under the sensor's **`plot:`** sub-dict (flat top-level keys are still accepted for backward compatibility):
+    - `alpha` (float/`0.3`): Transparency for plotting.
+    - `color` (str/`"#CC3311"`): Color of the sensor.
+
+    **Example:**
+    ```yaml
+    
+    sensors:
+      - name: 'lidar2d'
+        range_min: 0
+        range_max: 5
+        angle_range: 3.14 
+        number: 200
+        noise: False
+        std: 0.2
+        angle_std: 0.2
+        offset: [0, 0, 0]
+        plot:
+          alpha: 0.3
+    ```
+
+  - `fmcw_lidar2d`: Simplified 2D FMCW LiDAR for range and radial Doppler measurements. It reuses the beam geometry of `lidar2d` and adds two functional parameters:
+    - `motion_compensate` (bool/`False`): Whether to remove ego-motion from the measured radial velocity.
+    - `velocity_noise_std` (float/`0.0`): Standard deviation of Gaussian noise on radial velocity.
+
+    All visualization options go under the sensor's **`plot:`** sub-dict (same convention as `lidar2d` and object `plot:`). Flat top-level keys are still accepted for backward compatibility.
+    - `velocity_color` (bool/`True`): Whether to color valid beams by radial velocity.
+    - `velocity_color_max` (float/`2.0`): Velocity magnitude where the plotting color saturates.
+    - `velocity_linewidth` (float/`2.5`): Plot line width for valid returns.
+    - `no_hit_linewidth` (float/`0.8`): Plot line width for invalid beams.
+    - `no_hit_alpha` (float/`0.03`): Plot transparency for invalid beams.
+    - `show_velocity_markers` (bool/`True`): Whether to draw colored hit markers at valid endpoints.
+    - `velocity_marker_size` (float/`36`): Plot marker size for valid endpoints.
+    - `velocity_marker_edge_color` (str/`black`): Edge color of the endpoint markers.
+    - `velocity_marker_edge_width` (float/`0.6`): Edge width of the endpoint markers.
+    - `zero_velocity_color` (str/`"#56B4E9"`): Plot color used for near-zero radial velocity.
+    - `positive_velocity_color` (str/`"#CC3311"`): Plot color used for positive radial velocity.
+    - `negative_velocity_color` (str/`"#0072B2"`): Plot color used for negative radial velocity.
+    - `no_hit_color` (str/`lightgray`): Plot color used for invalid beams.
+
+    The scan output adds `radial_velocity` and `valid` arrays on top of the standard LiDAR angular metadata.
+
+    **Example:**
+    ```yaml
+    sensors:
+      - type: 'fmcw_lidar2d'
+        range_min: 0.0
+        range_max: 8.0
+        angle_range: 2.0944
+        number: 121
+        motion_compensate: False
+        plot:
+          velocity_color: True
+          velocity_linewidth: 2.0
+          velocity_marker_size: 45
+    ```
+
+  - `contact2d`: Contact sensor for the [`contact`](#p-w-collision-mode) collision mode. Every object has one built in as `obj.contact`, written by the contact solver, so `obj.contact.in_contact`, `obj.contact.partners`, `obj.contact.reports`, `obj.contact.force`, `obj.contact.contact_time`, `obj.contact.air_time`, `obj.contact.started` and `obj.contact.ended` are always available; listing it here draws a marker at each contact point and a line along the contact normal scaled by the contact force. It has no functional parameters. Visualization options go under the sensor's **`plot:`** sub-dict (flat top-level keys are also accepted):
+    - `force_scale` (float/`0.05`): Length of the force line per newton, in meters.
+    - `marker_size` (float/`6`): Size of the contact point markers.
+    - `linewidth` (float/`1.5`): Width of the force lines.
+    - `alpha` (float/`0.9`): Transparency of the drawing.
+    - `color` (str/`"#CC79A7"`): Color of the markers and lines.
+
+    **Example:**
+    ```yaml
+    sensors:
+      - type: 'contact2d'
+        plot:
+          force_scale: 0.05
+    ```
+
+(p-o-fov)=
+**`fov`** and **`fov_radius`**:
+  Define the field of view (FOV) for the object's sensors. The FOV is the angular range within which the sensor can detect objects. The `fov` parameter specifies the angular range in radians, while `fov_radius` sets the maximum detection distance.
+
+  **Example:**
+  ```yaml
+  fov: 1.57
+  fov_radius: 5.0
+  ```
+::::
+
+(object-mode)=
+::::{dropdown} **object mode**
+
+```{card} Overview
+:class-card: sd-bg-light sd-rounded-3
+- **`arrive_mode`**: Goal detection (`position`, `state`)
+- **`unobstructed`**: Ignore collisions (`True`/`False`)
+```
+
+(p-o-arrive-mode)=
+**`arrive_mode`** (`str`, default: `'position'`)
+: Chooses the method for determining if the object has arrived at its goal:
+
+  **Options:**
+  - `'position'`: Arrival is based solely on proximity to the goal position (`[x, y]`).
+  - `'state'`: Considers both position and orientation in the arrival check (`[x, y, theta]`). The heading difference is wrapped to `[-pi, pi]`, and a goal given without `theta` is checked by position only.
+
+  **Example:**
+  ```yaml
+  arrive_mode: 'position'
+  ```
+
+(p-o-unobstructed)=
+**`unobstructed`** (`bool`, default: `False`)
+: When set to `True`, this object is treated as having an unobstructed path, ignoring collisions with other objects and obstacles. This can be useful for testing or for objects that must not be impeded.
+
+  **Example:**
+  ```yaml
+  unobstructed: True
+  ```
+::::
+
+(object-visualization)=
+::::{dropdown} **object visualization**
+
+```{card} Overview
+:class-card: sd-bg-light sd-rounded-3
+- **`color`**: Object color (`'r'`, `'blue'`, `'k'`)
+- **`description`**: Image file (`'car_blue.png'`, `'diff_robot0.png'`)
+- **`plot`**: Advanced display options
+  - **Object**: Appearance (`obj_color`, `obj_alpha`, `obj_linestyle`)
+  - **Goal**: Goal markers (`show_goal`, `goal_color`, `show_goal_text`)
+  - **Trail**: Object trails (`show_trail`, `keep_trail_length`)
+  - **Trajectory**: Path lines (`show_trajectory`, `keep_traj_length`)
+  - **Sensors**: Sensor display (`show_sensor`, `show_fov`)
+```
+
+(p-o-color)=
+**`color`** (`str`, default: inferred from role and kinematics)
+: Specifies the object's color in visualizations for easy identification. Robots with registered kinematics use the color defined by the kinematics handler, green `#009E73` for the built-in models and `#117733` for `acker`; obstacles default to black, or to orange (`#E69F00`, `palette_param.pushable`) when a finite [`mass`](#p-o-mass) makes an obstacle without kinematics pushable. `'cycle'` gives each object of a `number` group the next color of `palette_param.cycle`, which tells robots apart in a crowd. These and every other default color are parameters of {py:mod}`irsim.config.palette_param`, a colour-blind-safe set that also prints well in grayscale; set them before `irsim.make()` to restyle a scene, for example `palette_param.robot = '#0072B2'`. Detailed color options can be found in [matplotlib color](https://matplotlib.org/stable/gallery/color/named_colors.html).
+
+  **Example:**
+  ```yaml
+  color: 'r'
+  ```
+
+(p-o-description)=
+**`description`** (`str`, default: `None`)
+: Provides an image for representing the object graphically. Supports image files located in world/description. You can also set the absolute path of the image file by your need.
+
+  **Available Images:**
+  - `car_green.png`: A default image for the ackermann steering vehicle.
+  - `car_blue.png`
+  - `car_red.png`
+  - `diff_robot0.png`
+  - `diff_robot1.png`
+  
+  **Example:**
+  ```yaml
+  description: 'car_blue.png'
+  ```
+
+(p-o-plot)=
+**`plot`**:
+  Contains plotting options controlling the visual representation of the object. All plot elements are initially created at the origin and positioned using transforms and data updates during animation updates.
+
+  **Object Visualization Properties:**
+  - `obj_linestyle` (str/`'-'`): Line style for object outline (e.g., '-', '--', ':', '-.').
+  - `obj_zorder` (int): Z-order (drawing layer) for object elements. Default is 3 for robot patches, 1 for obstacle patches, and 2 for description images.
+  - `obj_color` (str): Color of the object. Default is the object's color property.
+  - `obj_alpha` (float/`1.0`): Transparency of the object (0.0 to 1.0).
+  - `obj_linewidth` (float/`1.0`): Width of the object outline in Matplotlib points.
+
+  **Goal Visualization:**
+  - `show_goal` (bool/`False`): Whether to show the goal position.
+    - `goal_color` (str): Color of the goal marker. Default is the object's color.
+    - `goal_alpha` (float/`0.5`): Transparency of the goal marker (0.0 to 1.0).
+    - `goal_zorder` (int/`1`): Z-order of the goal marker.
+  - `show_goal_text` (bool/`False`): Whether to show the goal text.
+
+  **Text Label Visualization:**
+  - `show_text` (bool/`False`): Whether to show text information. By default, the object's abbreviation (e.g., `r0`, `o1`) is displayed. Custom text can be set at runtime via `object.set_text("custom label")`. Pass `None` to reset to the default abbreviation.
+    - `text_color` (str): Color of the text. Default is 'k' (black).
+    - `text_size` (int/`10`): Font size of the text.
+    - `text_alpha` (float/`1.0`): Transparency of the text (0.0 to 1.0).
+    - `text_zorder` (int/`2`): Z-order of the text.
+    - `text_position` (list/`[-radius-0.1, radius+0.1]`): Position offset from object center [dx, dy].
+
+  Similarly, goal text can be customized via `object.set_goal_text("custom goal label")`.
+
+  **Velocity Arrow Visualization:**
+  - `show_arrow` (bool/`False`): Whether to show the velocity arrow.
+    - `arrow_color` (str/`"#F0E442"`): Color of the arrow.
+    - `arrow_length` (float/`0.4`): Length of the arrow.
+    - `arrow_width` (float/`0.6`): Width of the arrow.
+    - `arrow_alpha` (float/`1.0`): Transparency of the arrow (0.0 to 1.0).
+    - `arrow_zorder` (int/`3`): Z-order of the arrow.
+
+  **Trajectory Path Visualization:**
+  - `show_trajectory` (bool/`False`): Whether to show the trajectory line.
+    - `traj_color` (str): Color of the trajectory. Default is the object's color.
+    - `traj_style` (str): Line style of the trajectory (e.g., '-', '--', ':', '-.'). Default is "-".
+    - `traj_width` (float/object width): Width of the trajectory line. Default is the object's width.
+    - `traj_alpha` (float/`0.5`): Transparency of the trajectory (0.0 to 1.0).
+    - `traj_zorder` (int/`0`): Z-order for trajectory elements.
+    - `keep_traj_length` (int/`0`): Number of steps to keep from the end of trajectory. Default is 0 (keep all steps).
+
+  **Object Trail Visualization:**
+  - `show_trail` (bool/`False`): Whether to show object trails.
+    - `trail_freq` (int/`2`): Frequency of trail display (every N steps).
+    - `trail_type` (str): Type of trail shape. Default is the object's shape.
+    - `trail_edgecolor` (str): Edge color of the trail. Default is the object's color.
+    - `trail_linewidth` (float/`0.8`): Width of the trail outline.
+    - `trail_alpha` (float/`0.7`): Transparency of the trail (0.0 to 1.0).
+    - `trail_fill` (bool/`False`): Whether to fill the trail shape.
+    - `trail_color` (str): Fill color of the trail. Default is the object's color.
+    - `trail_zorder` (int/`0`): Z-order for trail elements.
+    - `keep_trail_length` (int/`0`): Number of steps to keep from the end of trail. Default is 0 (keep all steps).
+
+  **Sensor Visualization:**
+  - `show_sensor` (bool/`True`): Whether to show sensor visualizations.
+
+  **Field of View Visualization:**
+  - `show_fov` (bool/`False`): Whether to show field of view visualization.
+    - `fov_color` (str/`"#56B4E9"`): Fill color of the field of view.
+    - `fov_edge_color` (str/`"#0072B2"`): Edge color of the field of view.
+    - `fov_alpha` (float/`0.5`): Transparency of the field of view (0.0 to 1.0).
+    - `fov_zorder` (int/`1`): Z-order of the field of view.
+
+  **Note:** All visual elements are created at the origin during initialization and positioned using matplotlib transforms (for patches) and set_data methods (for lines) during animation updates.
+
+  **Example:**
+  ```yaml
+  plot:
+    # Object appearance
+    obj_linestyle: '--'
+    obj_zorder: 3
+    obj_color: 'blue'
+    obj_alpha: 0.8
+    obj_linewidth: 2.0
+    
+    # Goal visualization
+    show_goal: True
+    goal_color: 'red'
+    goal_alpha: 0.7
+    goal_zorder: 2
+    
+    # Text labels
+    show_text: True
+    text_color: 'black'
+    text_size: 12
+    text_alpha: 0.9
+    text_zorder: 5
+    
+    # Velocity arrows
+    show_arrow: True
+    arrow_color: 'gold'
+    arrow_length: 0.5
+    arrow_width: 0.8
+    arrow_alpha: 0.9
+    arrow_zorder: 4
+    
+    # Trajectory path
+    show_trajectory: True
+    traj_color: 'green'
+    traj_style: '-'
+    traj_width: 0.6
+    traj_alpha: 0.6
+    traj_zorder: 1
+    
+    # Object trails
+    show_trail: True
+    trail_freq: 3
+    trail_edgecolor: 'purple'
+    trail_linewidth: 1.0
+    trail_alpha: 0.5
+    trail_fill: False
+    trail_color: 'purple'
+    trail_zorder: 0
+    
+    # Sensors and FOV
+    show_sensor: True
+    show_fov: True
+    fov_color: 'lightblue'
+    fov_edge_color: 'blue'
+    fov_alpha: 0.3
+    fov_zorder: 1
+  ```
+::::
+
+---
+
+(gui-configuration)=
+## GUI Configuration
+
+(gui-parameters-table)=
+### GUI Parameters Table
+
+| Parameter  | Type   | Default | Description                                                               |
+| ---------- | ------ | ------- | ------------------------------------------------------------------------- |
+| `keyboard` | `dict` | `{}`    | Keyboard control options (effective when `world.control_mode: keyboard`). |
+| `mouse`    | `dict` | `{}`    | Mouse control options.                                                    |
+
+(keyboard-properties)=
+:::::{dropdown} **keyboard properties**
+
+(p-g-keyboard)=
+**`keyboard`** (`dict`, default: `{}`)
+Configure keyboard control. Options are read by `KeyboardControl`. The default backend is `pynput`. If `pynput` is unavailable, IR‑SIM automatically falls back to the Matplotlib backend.
+
+  - `backend` (`str`/`"pynput"`): Keyboard backend.
+    - `"pynput"`: Global keyboard hook, but works when the Matplotlib window is focused (requires the `pynput` package).
+    - `"mpl"`: Matplotlib figure key events works when the figure window is focused. (no extra dependency, but may be delayed when there are lots of objects).
+  - `global_hook` (`bool`/`False`): With `backend: 'pynput'`, capture keys even if the Matplotlib window is not focused. (only active when the window is focused).
+  - `key_lv_max` (`float`/`3.0`): Maximum linear velocity.
+  - `key_ang_max` (`float`/`1.0`): Maximum angular velocity.
+  - `key_lv` (`float`/`0.0`): Initial linear velocity.
+  - `key_ang` (`float`/`0.0`): Initial angular velocity.
+  - `key_rot` (`float`/`0.0`): Initial rotational velocity (yaw rate for `omni_angular` kinematics).
+  - `key_id` (`int`/`0`): Initial robot control id.
+
+```yaml
+# Example: enable keyboard control with GUI settings
+world:
+  control_mode: 'keyboard'
+
+gui:
+  keyboard:
+    backend: 'pynput'     # or 'mpl'
+    global_hook: true     # if your want to capture keys globally. Default is False.
+    key_id: 0
+    key_lv_max: 3.0
+    key_ang_max: 1.0
+```
+
+**Keyboard Control Keys:**
+
+- `w`: Forward
+- `s`: Backward
+- `a`: Turn left (`diff`/`acker`) or strafe left (`omni`/`omni_angular`)
+- `d`: Turn right (`diff`/`acker`) or strafe right (`omni`/`omni_angular`)
+- `q`: Rotate left (yaw rate for `omni_angular`)
+- `e`: Rotate right (yaw rate for `omni_angular`)
+- `z` / `c`: Decrease / increase maximum angular velocity (`key_ang_max`)
+- `shift+z` / `shift+c`: Decrease / increase maximum linear velocity (`key_lv_max`)
+- `alt+num`: Change Current Control Robot ID
+- `r`: Reset the Environment
+- `space`: Toggle Pause/Resume Environment
+- `esc`: Quit the Environment (sets quit flag)
+- `x`: Switch Keyboard/Auto Control
+- `l`: Reload the Environment
+- `F5`: Debug the Environment (fn+f5 for mac)
+- `v`: Save the current figure
+- `y`: Toggle display render window
+
+```{tip}
+Debug mode lets you step the simulation frame-by-frame for inspection:
+
+- Press `F5` to enter debug mode at the current frame. While in debug mode, pressing `F5` again advances by one frame (single-step).
+- Press `space` to exit debug mode and resume normal execution.
+
+Notes:
+- On macOS laptops, you may need to hold the `fn` key (e.g., `fn+F5`). `alt` key is corresponding to `option` key in macOS. 
+```
+
+:::::
+
+(mouse-properties)=
+:::::{dropdown} **mouse properties**
+
+(p-g-mouse)=
+**`mouse`** (`dict`, default: `{}`)
+:: Configure mouse control. Options are read by `MouseControl`.
+
+  - `zoom_factor` (`float`): Zoom factor. Default is `1.1`.
+
+
+  ```yaml
+  gui:
+    mouse:
+      zoom_factor: 1.1
+  ``` 
+
+  ````{note}
+  **Mouse Actions:**
+
+  - **Mouse Movement**: Track mouse position and update display coordinates
+  - **Middle Click**: Reset zoom to default view
+  - **Scroll Up**: Zoom in (centered on mouse position)
+  - **Scroll Down**: Zoom out (centered on mouse position)
+
+  **Mouse Position Attributes:**
+  - `left_click_pos` (`tuple`): Position of left click (x, y).
+  - `right_click_pos` (`tuple`): Position of right click (x, y).
+  - `mouse_pos` (`tuple`): Current mouse position (x, y).
+  ````
+:::::
+
+---
+
+## Custom Configuration
+
+(custom-parameters)=
+### Custom Parameters
+
+`custom` is read from the YAML and handed back untouched. IR-SIM never interprets it, so a scenario can carry the values its own code needs - tolerances, planner weights, anything - beside the ones the simulator reads, and both are edited in the same file.
+
+```yaml
+world:
+  height: 20
+  width: 20
+  step_time: 0.1
+
+robot:
+  - kinematics: {name: 'diff'}
+    shape: {name: 'circle', radius: 0.35}
+
+custom:
+  safe_margin: 0.15
+  planner: {horizon: 20, weights: [1.0, 0.5]}
+```
+
+Read it through {py:attr}`~irsim.env.env_base.EnvBase.config`, which returns every parsed section, so a value defined next to the robot radius is available without opening the file again:
+
+```python
+env = irsim.make("world.yaml")
+
+margin = env.config["custom"]["safe_margin"] + env.robot.radius
+horizon = env.config["custom"]["planner"]["horizon"]
+step_time = env.config["world"]["step_time"]
+```
+
+Nothing inside `custom` is validated, nesting is free, and the section defaults to `{}` when the scenario omits it. `env.reload()` re-reads it with the rest of the file.
+
+## Configuration Examples
+
+Let's explore various configuration examples to demonstrate the flexibility and power of IR-SIM:
+
+::::{tab-set}
+
+:::{tab-item} Multi-Robot RVO
+```yaml
+robot:
+  - number: 10
+    distribution: {name: 'circle', radius: 4.0, center: [5, 5]}  
+    kinematics: {name: 'diff'}
+    shape: 
+      - {name: 'circle', radius: 0.2}  
+    behavior: {name: 'rvo', vxmax: 1.5, vymax: 1.5, acce: 1.0, factor: 1.0}
+    vel_min: [-3, -3.0]
+    vel_max: [3, 3.0]
+    color: ['royalblue', 'red', 'green', 'orange', 'purple', 'yellow', 'cyan', 'magenta', 'lime', 'pink', 'brown'] 
+    arrive_mode: position
+    goal_threshold: 0.15
+    plot:
+      show_trail: true
+      show_goal: true
+      trail_fill: true
+      trail_alpha: 0.2
+      show_trajectory: false
+```
+:::
+
+:::{tab-item} Multi-Robot ORCA
+```yaml
+robot:
+  - number: 10
+    distribution: {name: 'circle', radius: 4.0, center: [5, 5]}
+    kinematics: {name: 'omni'}
+    shape: {name: 'circle', radius: 0.2}
+    group_behavior: 
+      name: 'orca'
+      neighborDist: 10.0
+      maxNeighbors: 10
+      timeHorizon: 10.0
+      timeHorizonObst: 10.0
+      safe_radius: 0.1
+    vel_max: [2.0, 2.0]
+    goal: [9, 9, 0]
+    plot:
+      show_trail: true
+      trail_alpha: 0.5
+```
+:::
+
+:::{tab-item} Mixed Obstacles
+```yaml
+obstacle:
+  - shape: {name: 'circle', radius: 1.0}  # radius
+    state: [5, 5, 0]  
+  
+  - shape: {name: 'rectangle', length: 1.5, width: 1.2}  # radius
+    state: [6, 5, 1] 
+
+  - shape: {name: 'linestring', vertices: [[5, 5], [4, 0], [1, 6]] }  # vertices
+    state: [0, 0, 0] 
+    unobstructed: True
+
+  - shape:
+      name: 'polygon'
+      vertices: 
+        - [4.5, 4.5]
+        - [5.5, 4.5]
+        - [5.5, 5.5]
+        - [4.5, 5.5]
+```
+:::
+
+:::{tab-item} Ackermann Vehicle
+```yaml
+robot:  
+  - kinematics: {name: 'acker'}  
+    shape: {name: 'rectangle', length: 4.6, width: 1.6, wheelbase: 3}
+    state: [1, 1, 0, 0]
+    goal: [40, 40, 0]
+    vel_max: [4, 1]
+    behavior: {name: 'dash'}
+    plot:
+      show_trajectory: True
+```
+:::
+
+:::{tab-item} Omni Angular Robot
+```yaml
+robot:
+  - kinematics: {name: 'omni_angular'}
+    shape: {name: 'circle', radius: 0.2}
+    state: [2, 2, 0]
+    goal: [8, 8, 0]
+    velocity: [0, 0, 0]
+    vel_min: [-1, -1, -1]
+    vel_max: [1, 1, 1]
+    behavior: {name: 'dash'}
+    plot:
+      show_trajectory: True
+```
+:::
+
+:::{tab-item} Sensor Integration
+```yaml
+robot:
+  - kinematics: {name: 'diff'}
+    shape: {name: 'circle', radius: 0.3}
+    state: [2, 2, 0]
+    goal: [8, 8, 0]
+    behavior: {name: 'rvo'}
+    sensors:
+      - name: 'lidar2d'
+        range_min: 0.1
+        range_max: 8.0
+        angle_range: 6.28  # Full 360 degrees
+        number: 360
+        noise: True
+        std: 0.1
+        offset: [0, 0, 0]
+        color: 'red'
+    plot:
+      show_sensor: True
+      show_fov: True
+      fov_color: 'lightgreen'
+      fov_alpha: 0.3
+```
+:::
+::::
+
+````{tip}
+**Configuration Best Practices:**
+
+- **Multiple Objects**: When configuring multiple objects, use the `number` and `distribution` parameters to efficiently generate them. For instance, setting `number: 10` with a `distribution` of `'random'` can quickly populate the simulation with randomly placed objects. 
+- **Dictionary Parameters**: All dictionary-type parameters (e.g., `distribution`, `shape`, `kinematics`, `behavior`) must include a `'name'` key to specify their type. Omitting the `'name'` key will result in default values or errors.
+- **Group Configurations**: By default, objects within the same group share configurations. To customize individual objects within a group, add sub-parameters using `-`. Unspecified objects will inherit the last defined configuration within the group.
+- **Kinematics and Velocities**: Ensure that the `velocity` and `vel_max` parameters match the kinematics model. For example, a differential drive robot (`'diff'`) uses `[v, omega]`, an omnidirectional robot (`'omni'`) uses body-frame `[forward, lateral]`, `'omni_angular'` uses `[forward, lateral, yaw_rate]`, and `'usv'` uses waterjet thrust `[T_port, T_stbd]` in newtons (`vel_max` is not a speed cap).
+- **Plotting Options**: Customize the visualization of your simulation through the `plot` parameter for each object if the `plot` section is located in the object configuration. If it is located in the root of the object configuration, it will be applied to all objects.
+````

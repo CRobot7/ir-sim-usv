@@ -1,0 +1,900 @@
+"""
+Tests for GUI input handling: keyboard (pynput and matplotlib backends) and mouse.
+"""
+
+from unittest.mock import Mock, patch
+
+import pytest
+from matplotlib.backend_bases import MouseButton
+
+import irsim
+import irsim.gui.keyboard_control
+from irsim.gui.mouse_control import MouseControl
+
+try:
+    from pynput import keyboard
+
+    HAS_PYNPUT = True
+except ImportError:
+    keyboard = None
+    HAS_PYNPUT = False
+
+requires_pynput = pytest.mark.skipif(not HAS_PYNPUT, reason="pynput not installed")
+
+
+@requires_pynput
+class TestKeyboardControlPynput:
+    """Tests for keyboard control via pynput backend."""
+
+    def test_basic_key_presses(self, env_factory, mock_keyboard_key):
+        """Test basic keyboard key press and release."""
+        env = env_factory("test_keyboard_control.yaml")
+        key_list = ["w", "a", "s", "d", "q", "e", "z", "c", "r", "l", "v", "x", "y"]
+        mock_keys = [mock_keyboard_key(c) for c in key_list]
+
+        for _ in range(3):
+            for mock_key in mock_keys:
+                env.keyboard._on_pynput_press(mock_key)
+                env.keyboard._on_pynput_release(mock_key)
+            env.step()
+            env.render(0.01)
+
+    def test_reload_key(self, env_factory, mock_keyboard_key):
+        """Test 'l' key reloads environment."""
+        env = env_factory("test_keyboard_control.yaml")
+        pre_names = list(env.names)
+        env.keyboard._on_pynput_release(mock_keyboard_key("l"))
+        assert len(env.names) == len(pre_names)
+
+    def test_commands_without_env_reference_warn(self, env_factory):
+        """Command keys need the environment, and are ignored when it is unset."""
+        env = env_factory("test_keyboard_control.yaml")
+        keyboard_control = env.keyboard
+        keyboard_control._active_only = False
+        keyboard_control.env_ref = None
+
+        for key in ("r", "space", "l", "f5", "v", "y", "escape"):
+            keyboard_control._run_command_key(key)  # ignored, never raises
+
+        # the control mode needs no environment, so it still switches
+        keyboard_control._run_command_key("x")
+
+        assert keyboard_control.env_ref is None
+        assert env._world_param.control_mode == "auto"
+
+    def test_escape_key_quits_pynput(self, env_factory):
+        """ESC has no character, so it is handled as a special key release."""
+        env = env_factory("test_keyboard_control.yaml")
+        env.keyboard._active_only = False
+
+        class EscKeyMock:
+            name = "esc"
+
+            def __eq__(self, other):
+                return other == keyboard.Key.esc
+
+        env.keyboard._on_pynput_release(EscKeyMock())
+
+        assert env.quit_flag is True
+
+    def test_special_release_without_pynput(self, env_factory, monkeypatch):
+        """Without pynput there are no key constants to compare, so nothing runs."""
+        env = env_factory("test_keyboard_control.yaml")
+        env.keyboard._active_only = False
+        monkeypatch.setattr(irsim.gui.keyboard_control, "keyboard", None)
+
+        class AltKeyMock:
+            name = "alt"
+
+        env.keyboard.alt_flag = True
+        env.keyboard._on_pynput_release(AltKeyMock())
+
+        assert env.keyboard.alt_flag is False
+        assert env.quit_flag is False
+
+    def test_alt_key_robot_selection(self, env_factory):
+        """Test Alt+number selects robot."""
+        env = env_factory("test_keyboard_control.yaml")
+        alt_key = Mock(spec=keyboard.Key)
+        alt_key.name = "alt"
+        num_keys = [Mock(spec=keyboard.Key, char=str(i)) for i in range(5)]
+
+        env.keyboard.is_active = True
+        env.keyboard._active_only = False
+        env.keyboard._on_pynput_press(alt_key)
+        assert env.keyboard.alt_flag
+
+        for i, num_key in enumerate(num_keys):
+            env.keyboard._on_pynput_press(num_key)
+            assert env.keyboard.key_id == i
+
+        env.keyboard._on_pynput_release(alt_key)
+        assert not env.keyboard.alt_flag
+
+    def test_space_key_pause_resume(self, env_factory):
+        """Test space key toggles pause/resume."""
+        env = env_factory("test_keyboard_control.yaml")
+        env.keyboard._active_only = False  # Allow testing without focus
+
+        class SpaceKeyMock:
+            name = "space"
+
+            def __eq__(self, other):
+                return other == keyboard.Key.space
+
+        space_key = SpaceKeyMock()
+
+        if "Running" not in env.status:
+            env.resume()
+
+        env.keyboard._on_pynput_release(space_key)
+        assert env.status == "Pause"
+
+        env.keyboard._on_pynput_release(space_key)
+        assert env.status == "Running"
+
+    def test_x_key_toggles_control_mode(self, env_factory):
+        """Test 'x' key toggles control mode."""
+        env = env_factory("test_keyboard_control.yaml")
+        env.keyboard._active_only = False  # Allow testing without focus
+
+        class XKeyMock:
+            char = "x"
+
+        mode0 = env.keyboard._world_param.control_mode
+        env.keyboard._on_pynput_release(XKeyMock())
+        assert env._world_param.control_mode != mode0
+        env.keyboard._on_pynput_release(XKeyMock())
+        assert env._world_param.control_mode == mode0
+
+    def test_qe_rotate(self, env_factory, mock_keyboard_key):
+        """Test 'q'/'e' keys control rotation velocity."""
+        env = env_factory("test_keyboard_control.yaml")
+        env.keyboard._active_only = False  # Allow testing without focus
+        env.keyboard._on_pynput_press(mock_keyboard_key("q"))
+        assert env.keyboard.key_rot == env.keyboard.key_ang_max
+        env.keyboard._on_pynput_release(mock_keyboard_key("q"))
+        assert env.keyboard.key_rot == 0
+        env.keyboard._on_pynput_press(mock_keyboard_key("e"))
+        assert env.keyboard.key_rot == -env.keyboard.key_ang_max
+        env.keyboard._on_pynput_release(mock_keyboard_key("e"))
+        assert env.keyboard.key_rot == 0
+
+    def test_zc_adjust_ang_max(self, env_factory, mock_keyboard_key):
+        """Test 'z'/'c' keys adjust angular velocity max."""
+        env = env_factory("test_keyboard_control.yaml")
+        env.keyboard._active_only = False  # Allow testing without focus
+        prev_ang_max = env.keyboard.key_ang_max
+        env.keyboard._on_pynput_release(mock_keyboard_key("c"))
+        assert env.keyboard.key_ang_max > prev_ang_max
+        env.keyboard._on_pynput_release(mock_keyboard_key("z"))
+        assert env.keyboard.key_ang_max < prev_ang_max + 0.2
+
+    def test_shift_zc_adjust_lv_max(self, env_factory, mock_keyboard_key):
+        """Test Shift+Z/C (uppercase) keys adjust linear velocity max."""
+        env = env_factory("test_keyboard_control.yaml")
+        env.keyboard._active_only = False
+        prev_lv_max = env.keyboard.key_lv_max
+        env.keyboard._on_pynput_release(mock_keyboard_key("C"))
+        assert env.keyboard.key_lv_max == pytest.approx(prev_lv_max + 0.2)
+        env.keyboard._on_pynput_release(mock_keyboard_key("Z"))
+        assert env.keyboard.key_lv_max == pytest.approx(prev_lv_max)
+
+    def test_r_key_sets_reset_flag(self, env_factory, mock_keyboard_key):
+        """Test 'r' key sets reset flag."""
+        env = env_factory("test_keyboard_control.yaml")
+        env.keyboard._active_only = False  # Allow testing without focus
+        env.keyboard._on_pynput_release(mock_keyboard_key("r"))
+        assert env.reset_flag is True
+        env.render(0.0)
+        assert env.reset_flag is False
+
+    def test_l_key_sets_reload_flag(self, env_factory, mock_keyboard_key):
+        """Test 'l' key sets reload flag."""
+        env = env_factory("test_keyboard_control.yaml")
+        env.keyboard._active_only = False  # Allow testing without focus
+        env.keyboard._on_pynput_release(mock_keyboard_key("l"))
+        assert env.reload_flag is True
+        env.render(0.0)
+        assert env.reload_flag is False
+
+    def test_v_key_saves_figure(self, env_factory, mock_keyboard_key):
+        """Test 'v' key saves figure."""
+        env = env_factory("test_keyboard_control.yaml")
+        env.keyboard._active_only = False  # Allow testing without focus
+        with patch.object(env, "save_figure") as mock_save:
+            env.keyboard._on_pynput_release(mock_keyboard_key("v"))
+            env.render(0.0)
+            mock_save.assert_called_once()
+
+    def test_y_key_toggles_display(self, env_factory, mock_keyboard_key):
+        """Test 'y' key toggles display."""
+        env = env_factory("test_keyboard_control.yaml")
+        env.keyboard._active_only = False  # Allow testing without focus
+        initial_display = env.display
+        env.keyboard._on_pynput_release(mock_keyboard_key("y"))
+        assert env.display != initial_display
+        env.keyboard._on_pynput_release(mock_keyboard_key("y"))
+        assert env.display == initial_display
+
+    def test_f5_debug_single_step(self, env_factory):
+        """Test F5 key for debug single-step."""
+        env = env_factory("test_keyboard_control.yaml")
+        env.keyboard._active_only = False  # Allow testing without focus
+
+        class F5KeyMock:
+            name = "f5"
+
+            def __eq__(self, other):
+                return other == keyboard.Key.f5
+
+        f5_key = F5KeyMock()
+        t0 = env.time
+        env.keyboard._on_pynput_release(f5_key)
+        env.step()
+        t1 = env.time
+        assert t1 > t0
+        env.step()
+        assert env.time == t1  # blocked until next F5
+        assert "Pause (Debugging)" in env.status
+        env.keyboard._on_pynput_release(f5_key)
+        env.step()
+        assert env.time > t1
+
+    def test_special_keys_without_env_are_ignored(self):
+        """Space/F5/ESC go through the guard, so a missing env is not a crash."""
+        # mpl backend: no environment means no display to gate on, and the
+        # pynput handlers stay directly callable regardless of backend.
+        kb = irsim.gui.keyboard_control.KeyboardControl(env_ref=None, backend="mpl")
+
+        for special in (keyboard.Key.space, keyboard.Key.f5, keyboard.Key.esc):
+            kb._on_pynput_special_release(special)  # must not raise
+
+    def test_special_keys_run_commands_with_env(self):
+        """With an environment attached the same keys reach their commands."""
+        kb = irsim.gui.keyboard_control.KeyboardControl(env_ref=None, backend="mpl")
+        kb.env_ref = Mock()
+        kb._toggle_pause = Mock()
+        kb._step_debug = Mock()
+        kb._quit_env = Mock()
+
+        kb._on_pynput_special_release(keyboard.Key.space)
+        kb._on_pynput_special_release(keyboard.Key.f5)
+        kb._on_pynput_special_release(keyboard.Key.esc)
+
+        kb._toggle_pause.assert_called_once()
+        kb._step_debug.assert_called_once()
+        kb._quit_env.assert_called_once()
+
+    def test_invalid_backend_falls_back_to_mpl(self, env_factory):
+        """Test invalid backend falls back to mpl."""
+        env = env_factory("test_keyboard_control.yaml")
+        with patch.object(env._env_param.logger, "warning") as mock_warning:
+            kb = irsim.gui.keyboard_control.KeyboardControl(env, backend="invalid")
+            assert kb.backend == "mpl"
+            mock_warning.assert_called_once()
+
+    def test_alt_key_attribute_error_handling(self, env_factory):
+        """Test Alt key AttributeError is handled gracefully."""
+        env = env_factory("test_keyboard_control.yaml")
+        env.keyboard._active_only = False
+
+        class BadKey:
+            def __getattr__(self, name):
+                if name == "name":
+                    raise AttributeError("Mock attribute error")
+                return
+
+        bad_key = BadKey()
+        env.keyboard._on_pynput_press(bad_key)
+        assert env.keyboard.alt_flag == 0
+
+    def test_pynput_unavailable_falls_back(self, env_factory):
+        """Test pynput unavailable falls back to mpl."""
+        env = env_factory("test_keyboard_control.yaml")
+        with (
+            patch("irsim.gui.keyboard_control._load_pynput", lambda: None),
+            patch.object(env._env_param.logger, "warning") as mock_warning,
+        ):
+            kb = irsim.gui.keyboard_control.KeyboardControl(env, backend="pynput")
+            assert kb.backend == "mpl"
+            mock_warning.assert_called_once()
+
+    def test_mpl_connect_exception_handling(self, env_factory):
+        """Test matplotlib connection exception handling."""
+        env = env_factory("test_keyboard_control.yaml")
+        with patch("matplotlib.pyplot.gcf") as mock_gcf:
+            mock_fig = Mock()
+            mock_fig.canvas.mpl_connect.side_effect = Exception("Connection failed")
+            mock_gcf.return_value = mock_fig
+            kb = irsim.gui.keyboard_control.KeyboardControl(env)
+            assert kb.backend == "pynput"
+
+    def test_focus_event_handlers(self, env_factory):
+        """Test focus event handlers."""
+        env = env_factory("test_keyboard_control.yaml")
+        env.keyboard._on_mpl_focus_in(None)
+        assert env.keyboard._is_active
+
+        env.keyboard._on_mpl_focus_out(None)
+        assert not env.keyboard._is_active
+
+        env.keyboard._on_mpl_close(None)
+        assert not env.keyboard._is_active
+
+
+@requires_pynput
+class TestKeyboardControlMpl:
+    """Tests for keyboard control via matplotlib backend."""
+
+    def test_basic_movement_keys(self, env_factory, mock_mpl_event):
+        """Test basic movement keys (w, a, s, d)."""
+        env = env_factory("test_keyboard_control2.yaml")
+
+        # Press 'w' - forward
+        env.keyboard._on_mpl_press(mock_mpl_event("w"))
+        env.step()
+        v = env.robot.velocity.reshape(-1)
+        assert v[0] > 0
+
+        # Release 'w'
+        env.keyboard._on_mpl_release(mock_mpl_event("w"))
+        env.step()
+        v = env.robot.velocity.reshape(-1)
+        assert abs(v[0]) <= 1e-9
+
+        # Press 's' - backward
+        env.keyboard._on_mpl_press(mock_mpl_event("s"))
+        env.step()
+        v = env.robot.velocity.reshape(-1)
+        assert v[0] < 0
+        env.keyboard._on_mpl_release(mock_mpl_event("s"))
+        env.step()
+
+        # Press 'a' - left
+        env.keyboard._on_mpl_press(mock_mpl_event("a"))
+        env.step()
+        v = env.robot.velocity.reshape(-1)
+        assert v[1] > 0
+        env.keyboard._on_mpl_release(mock_mpl_event("a"))
+        env.step()
+
+        # Press 'd' - right
+        env.keyboard._on_mpl_press(mock_mpl_event("d"))
+        env.step()
+        v = env.robot.velocity.reshape(-1)
+        assert v[1] < 0
+        env.keyboard._on_mpl_release(mock_mpl_event("d"))
+        env.step()
+
+    def test_alt_robot_selection(self, env_factory, mock_mpl_event):
+        """Test Alt+number selects robot in mpl backend."""
+        env = env_factory("test_keyboard_control2.yaml")
+        mpl_kb = irsim.gui.keyboard_control.KeyboardControl(env, backend="mpl")
+
+        mpl_kb._on_mpl_press(mock_mpl_event("alt+0"))
+        assert mpl_kb.key_id == 0
+
+        mpl_kb._on_mpl_press(mock_mpl_event("alt+1"))
+        assert mpl_kb.alt_flag
+        assert mpl_kb.key_id == 1
+
+        mpl_kb._on_mpl_press(mock_mpl_event("alt"))
+        assert mpl_kb.alt_flag
+
+        mpl_kb._on_mpl_press(mock_mpl_event("alt+9"))
+        assert mpl_kb.key_id == 9
+
+    def test_qe_rotate_mpl(self, env_factory, mock_mpl_event):
+        """Test q/e keys control rotation velocity in mpl backend."""
+        env = env_factory("test_keyboard_control2.yaml")
+
+        env.keyboard._on_mpl_press(mock_mpl_event("q"))
+        assert env.keyboard.key_rot == env.keyboard.key_ang_max
+        env.keyboard._on_mpl_release(mock_mpl_event("q"))
+        assert env.keyboard.key_rot == 0
+
+        env.keyboard._on_mpl_press(mock_mpl_event("e"))
+        assert env.keyboard.key_rot == -env.keyboard.key_ang_max
+        env.keyboard._on_mpl_release(mock_mpl_event("e"))
+        assert env.keyboard.key_rot == 0
+
+    def test_ang_max_adjustment(self, env_factory, mock_mpl_event):
+        """Test angular velocity max adjustment with c/z keys."""
+        env = env_factory("test_keyboard_control2.yaml")
+
+        prev_ang_max = env.keyboard.key_ang_max
+        env.keyboard._on_mpl_release(mock_mpl_event("c"))
+        assert env.keyboard.key_ang_max > prev_ang_max
+
+        env.keyboard._on_mpl_release(mock_mpl_event("z"))
+        assert env.keyboard.key_ang_max < prev_ang_max + 0.2
+
+    def test_shift_zc_lv_max_adjustment(self, env_factory, mock_mpl_event):
+        """Test Shift+Z/C keys adjust linear velocity max in mpl backend."""
+        env = env_factory("test_keyboard_control2.yaml")
+
+        prev_lv_max = env.keyboard.key_lv_max
+        env.keyboard._on_mpl_release(mock_mpl_event("shift+c"))
+        assert env.keyboard.key_lv_max == pytest.approx(prev_lv_max + 0.2)
+
+        env.keyboard._on_mpl_release(mock_mpl_event("shift+z"))
+        assert env.keyboard.key_lv_max == pytest.approx(prev_lv_max)
+
+    def test_space_pause_resume(self, env_factory, mock_mpl_event):
+        """Test space key toggles pause/resume in mpl backend."""
+        env = env_factory("test_keyboard_control2.yaml")
+
+        if "Running" not in env.status:
+            env.resume()
+        env.keyboard._on_mpl_release(mock_mpl_event("space"))
+        assert env.pause_flag is True
+        assert env.status.startswith("Pause")
+        env.keyboard._on_mpl_release(mock_mpl_event("space"))
+        assert "Running" in env.status
+
+    def test_r_key_reset(self, env_factory, mock_mpl_event):
+        """Test 'r' key reset in mpl backend."""
+        env = env_factory("test_keyboard_control2.yaml")
+        env.keyboard._on_mpl_release(mock_mpl_event("r"))
+        env.step()
+        assert "Reset" in env.status or "Collision" in env.status
+
+    def test_l_key_reload(self, env_factory, mock_mpl_event):
+        """Test 'l' key reload in mpl backend."""
+        env = env_factory("test_keyboard_control2.yaml")
+        env.keyboard._on_mpl_release(mock_mpl_event("l"))
+        assert env.status in (
+            "Running",
+            "Pause",
+            "Reset",
+            "Collision",
+            "Arrived",
+            "None",
+        )
+
+    def test_v_key_save_figure(self, env_factory, mock_mpl_event):
+        """Test 'v' key saves figure in mpl backend."""
+        env = env_factory("test_keyboard_control2.yaml")
+        with patch.object(env, "save_figure") as mock_save:
+            env.keyboard._on_mpl_release(mock_mpl_event("v"))
+            env.render(0.0)
+            mock_save.assert_called_once()
+
+    def test_y_key_toggles_display(self, env_factory, mock_mpl_event):
+        """Test 'y' key toggles display in mpl backend."""
+        env = env_factory("test_keyboard_control2.yaml")
+        initial_display = env.display
+        env.keyboard._on_mpl_release(mock_mpl_event("y"))
+        assert env.display != initial_display
+        env.keyboard._on_mpl_release(mock_mpl_event("y"))
+        assert env.display == initial_display
+
+    def test_f5_debug_step(self, mock_mpl_event):
+        """Test F5 debug single-step in mpl backend."""
+
+        # Create fresh environment to avoid state pollution from other tests
+        import irsim
+
+        env = irsim.make("test_keyboard_control2.yaml", save_ani=False, display=False)
+        try:
+            # Ensure environment is running first and reset debug state
+            if "Running" not in env.status:
+                env.resume()
+            env.debug_flag = False
+            env.debug_count = 0
+            t0 = env.time
+            env.keyboard._on_mpl_release(mock_mpl_event("f5"))
+            env.step()
+            t1 = env.time
+            assert t1 > t0, f"First step should advance time: t0={t0}, t1={t1}"
+            env.step()
+            # After one allowed step, further steps are blocked
+            assert env.time == t1, (
+                f"Second step should be blocked: time={env.time}, t1={t1}"
+            )
+            env.keyboard._on_mpl_release(mock_mpl_event("f5"))
+            env.step()
+            assert env.time > t1, (
+                f"Third step after F5 should advance: time={env.time}, t1={t1}"
+            )
+        finally:
+            env.end()
+
+    def test_x_key_toggle_mode(self, env_factory, mock_mpl_event):
+        """Test 'x' key toggles control mode in mpl backend."""
+        env = env_factory("test_keyboard_control2.yaml")
+
+        mode0 = env.keyboard._world_param.control_mode
+        env.keyboard._on_mpl_release(mock_mpl_event("x"))
+        assert env.keyboard._world_param.control_mode != mode0
+        env.keyboard._on_mpl_release(mock_mpl_event("x"))
+        assert env.keyboard._world_param.control_mode == mode0
+
+    def test_space_key_normalized_from_blank(self, env_factory, mock_mpl_event):
+        """Matplotlib spells the space key both ways; both pause the environment."""
+        env = env_factory("test_keyboard_control.yaml")
+        env.keyboard._active_only = False
+
+        env.keyboard._on_mpl_release(mock_mpl_event(" "))
+        assert "Pause" in env.status
+
+        env.keyboard._on_mpl_release(mock_mpl_event("space"))
+        assert "Pause" not in env.status
+
+    def test_escape_key_quit(self, env_factory, mock_mpl_event):
+        """Test escape key sets quit flag in mpl backend."""
+        env = env_factory("test_keyboard_control2.yaml")
+        mpl_kb = irsim.gui.keyboard_control.KeyboardControl(env, backend="mpl")
+
+        mpl_kb._on_mpl_release(mock_mpl_event("escape"))
+        assert env.quit_flag
+
+        env.quit_flag = False
+        mpl_kb._on_mpl_release(mock_mpl_event("esc"))
+        assert env.quit_flag
+
+
+@requires_pynput
+class TestMultiEnvSwitching:
+    """Tests for multi-environment keyboard switching."""
+
+    def test_only_one_active_at_a_time(self, env_factory):
+        """Test that only one keyboard instance is active at a time."""
+        env1 = env_factory("test_keyboard_control.yaml")
+        env2 = env_factory("test_keyboard_control2.yaml")
+
+        # Initially neither is active
+        assert not env1.keyboard._is_active
+        assert not env2.keyboard._is_active
+
+        # Activate env1
+        env1.keyboard._set_active()
+        assert env1.keyboard._is_active
+        assert not env2.keyboard._is_active
+
+        # Activate env2 - env1 should be deactivated
+        env2.keyboard._set_active()
+        assert not env1.keyboard._is_active
+        assert env2.keyboard._is_active
+
+        # Switch back to env1
+        env1.keyboard._set_active()
+        assert env1.keyboard._is_active
+        assert not env2.keyboard._is_active
+
+    def test_global_instance_tracking(self, env_factory):
+        """Test that global _active_keyboard_instance is correctly tracked."""
+        import irsim.gui.keyboard_control as kb_module
+
+        env1 = env_factory("test_keyboard_control.yaml")
+        env2 = env_factory("test_keyboard_control2.yaml")
+
+        # Activate env1
+        env1.keyboard._set_active()
+        assert kb_module._active_keyboard_instance is env1.keyboard
+
+        # Activate env2
+        env2.keyboard._set_active()
+        assert kb_module._active_keyboard_instance is env2.keyboard
+
+    def test_focus_in_activates(self, env_factory):
+        """Test that focus in event activates keyboard control."""
+        env1 = env_factory("test_keyboard_control.yaml")
+        env2 = env_factory("test_keyboard_control2.yaml")
+
+        # Simulate focus in on env1
+        env1.keyboard._on_mpl_focus_in(None)
+        assert env1.keyboard._is_active
+        assert not env2.keyboard._is_active
+
+        # Simulate focus in on env2
+        env2.keyboard._on_mpl_focus_in(None)
+        assert not env1.keyboard._is_active
+        assert env2.keyboard._is_active
+
+    def test_focus_out_deactivates_only_active(self, env_factory):
+        """Test that focus out only deactivates the currently active instance."""
+        import irsim.gui.keyboard_control as kb_module
+
+        env1 = env_factory("test_keyboard_control.yaml")
+        env2 = env_factory("test_keyboard_control2.yaml")
+
+        # Activate env1
+        env1.keyboard._set_active()
+
+        # Focus out on env2 should NOT deactivate env1
+        env2.keyboard._on_mpl_focus_out(None)
+        assert env1.keyboard._is_active
+
+        # Focus out on env1 should deactivate it
+        env1.keyboard._on_mpl_focus_out(None)
+        assert not env1.keyboard._is_active
+        assert kb_module._active_keyboard_instance is env1.keyboard  # Still tracked
+
+    def test_close_clears_global_instance(self, env_factory):
+        """Test that closing the active window clears global instance."""
+        import irsim.gui.keyboard_control as kb_module
+
+        env1 = env_factory("test_keyboard_control.yaml")
+        env2 = env_factory("test_keyboard_control2.yaml")
+
+        # Activate env1 and close it
+        env1.keyboard._set_active()
+        env1.keyboard._on_mpl_close(None)
+        assert not env1.keyboard._is_active
+        assert kb_module._active_keyboard_instance is None
+
+        # Activate env2 and close it
+        env2.keyboard._set_active()
+        env2.keyboard._on_mpl_close(None)
+        assert not env2.keyboard._is_active
+        assert kb_module._active_keyboard_instance is None
+
+    def test_pynput_gated_by_active(self, env_factory, mock_keyboard_key):
+        """Test pynput key events are gated by active status."""
+        env1 = env_factory("test_keyboard_control.yaml")
+        env2 = env_factory("test_keyboard_control2.yaml")
+
+        # Enable active_only mode (default)
+        env1.keyboard._active_only = True
+        env2.keyboard._active_only = True
+
+        # Neither is active - key presses should be ignored
+        initial_lv1 = env1.keyboard.key_lv
+        initial_lv2 = env2.keyboard.key_lv
+        env1.keyboard._on_pynput_press(mock_keyboard_key("w"))
+        env2.keyboard._on_pynput_press(mock_keyboard_key("w"))
+        assert env1.keyboard.key_lv == initial_lv1
+        assert env2.keyboard.key_lv == initial_lv2
+
+        # Activate env1 - only env1 should respond
+        env1.keyboard._set_active()
+        env1.keyboard._on_pynput_press(mock_keyboard_key("w"))
+        env2.keyboard._on_pynput_press(mock_keyboard_key("w"))
+        assert env1.keyboard.key_lv == env1.keyboard.key_lv_max
+        assert env2.keyboard.key_lv == initial_lv2
+
+        # Release and reset
+        env1.keyboard._on_pynput_release(mock_keyboard_key("w"))
+
+        # Activate env2 - only env2 should respond
+        env2.keyboard._set_active()
+        env1.keyboard._on_pynput_press(mock_keyboard_key("w"))
+        env2.keyboard._on_pynput_press(mock_keyboard_key("w"))
+        assert env1.keyboard.key_lv == 0  # Still from release
+        assert env2.keyboard.key_lv == env2.keyboard.key_lv_max
+
+
+@requires_pynput
+class TestKeyboardControl3D:
+    """Tests for keyboard control in 3D projection."""
+
+    def test_keyboard_control_3d(self, env_factory, mock_keyboard_key):
+        """Test keyboard control works with 3D projection."""
+        env = env_factory("test_keyboard_control.yaml", projection="3d")
+        key_list = ["w", "a", "s", "d", "q", "e", "z", "c", "r"]
+        mock_keys = [mock_keyboard_key(c) for c in key_list]
+
+        for _ in range(3):
+            for mock_key in mock_keys:
+                env.keyboard._on_pynput_press(mock_key)
+                env.keyboard._on_pynput_release(mock_key)
+            env.step()
+            env.render(0.01)
+
+
+# ---------------------------------------------------------------------------
+# Mouse control
+# ---------------------------------------------------------------------------
+
+
+class TestMouseControl:
+    """Tests for MouseControl class."""
+
+    @pytest.fixture
+    def mouse_setup(self, env_factory):
+        """Setup mouse control with environment."""
+        env = env_factory("test_multi_objects_world.yaml")
+        ax = env._env_plot.ax
+        mouse_control = MouseControl(ax, zoom_factor=1.2)
+        return env, ax, mouse_control
+
+    def test_initial_state(self, mouse_setup):
+        """Test initial state of mouse control."""
+        _, _, mouse_control = mouse_setup
+        assert mouse_control.mouse_pos is None
+        assert mouse_control.left_click_pos is None
+        assert mouse_control.right_click_pos is None
+        assert mouse_control.zoom_factor == 1.2
+
+    def test_mouse_movement(self, mouse_setup):
+        """Test mouse movement tracking."""
+        _, ax, mouse_control = mouse_setup
+        mock_event = Mock()
+        mock_event.inaxes = ax
+        mock_event.xdata = 5.0
+        mock_event.ydata = 5.0
+        mouse_control.on_move(mock_event)
+        assert mouse_control.mouse_pos == (5.0, 5.0)
+
+    def test_mouse_movement_outside_axes(self, mouse_setup):
+        """Test mouse movement outside axes clears position."""
+        _, ax, mouse_control = mouse_setup
+        # First move inside
+        mock_event = Mock()
+        mock_event.inaxes = ax
+        mock_event.xdata = 5.0
+        mock_event.ydata = 5.0
+        mouse_control.on_move(mock_event)
+        assert mouse_control.mouse_pos == (5.0, 5.0)
+
+        # Then move outside
+        mock_event.inaxes = None
+        mouse_control.on_move(mock_event)
+        assert mouse_control.mouse_pos is None
+
+    def test_left_click(self, mouse_setup):
+        """Test left mouse button click."""
+        _, ax, mouse_control = mouse_setup
+        mock_event = Mock()
+        mock_event.button = MouseButton.LEFT
+        mock_event.inaxes = ax
+        mock_event.xdata = 3.0
+        mock_event.ydata = 3.0
+        mouse_control.on_click(mock_event)
+        assert mouse_control.left_click_pos is not None
+        assert mouse_control.left_click_pos[0] == 3.0
+        assert mouse_control.left_click_pos[1] == 3.0
+
+    def test_right_click(self, mouse_setup):
+        """Test right mouse button click."""
+        _, ax, mouse_control = mouse_setup
+        mock_event = Mock()
+        mock_event.button = MouseButton.RIGHT
+        mock_event.inaxes = ax
+        mock_event.xdata = 7.0
+        mock_event.ydata = 7.0
+        mouse_control.on_click(mock_event)
+        assert mouse_control.right_click_pos is not None
+        assert mouse_control.right_click_pos[0] == 7.0
+        assert mouse_control.right_click_pos[1] == 7.0
+
+    def test_scroll_zoom(self, mouse_setup):
+        """Test scroll wheel zoom."""
+        _, ax, mouse_control = mouse_setup
+        initial_xlim = ax.get_xlim()
+        initial_ylim = ax.get_ylim()
+
+        mock_event = Mock()
+        mock_event.inaxes = ax
+        mock_event.xdata = 5.0
+        mock_event.ydata = 5.0
+        mock_event.step = 1  # Scroll up (zoom in)
+        mouse_control.on_scroll(mock_event)
+
+        assert ax.get_xlim() != initial_xlim
+        assert ax.get_ylim() != initial_ylim
+
+    def test_middle_click_reset(self, mouse_setup):
+        """Test middle click resets zoom."""
+        _, ax, mouse_control = mouse_setup
+        initial_xlim = ax.get_xlim()
+        initial_ylim = ax.get_ylim()
+
+        # First zoom in
+        mock_scroll = Mock()
+        mock_scroll.inaxes = ax
+        mock_scroll.xdata = 5.0
+        mock_scroll.ydata = 5.0
+        mock_scroll.step = 1
+        mouse_control.on_scroll(mock_scroll)
+
+        # Verify zoom changed
+        assert ax.get_xlim() != initial_xlim
+        assert ax.get_ylim() != initial_ylim
+
+        # Reset with middle click
+        mock_middle = Mock()
+        mock_middle.button = MouseButton.MIDDLE
+        mock_middle.inaxes = ax
+        mouse_control.on_click(mock_middle)
+
+        # Verify reset
+        assert ax.get_xlim() == initial_xlim
+        assert ax.get_ylim() == initial_ylim
+
+    def test_set_zoom_factor(self, mouse_setup):
+        """Test setting zoom factor."""
+        _, _, mouse_control = mouse_setup
+        mouse_control.set_zoom_factor(1.5)
+        assert mouse_control.zoom_factor == 1.5
+
+    def test_set_zoom_factor_minimum(self, mouse_setup):
+        """Test zoom factor enforces minimum."""
+        _, _, mouse_control = mouse_setup
+        mouse_control.set_zoom_factor(1.0)  # Below minimum
+        assert mouse_control.zoom_factor == 1.1  # Should be set to minimum
+
+    def test_left_release(self, mouse_setup):
+        """Test left mouse button release."""
+        _, ax, mouse_control = mouse_setup
+        # First click
+        mock_click = Mock()
+        mock_click.button = MouseButton.LEFT
+        mock_click.inaxes = ax
+        mock_click.xdata = 3.0
+        mock_click.ydata = 3.0
+        mouse_control.on_click(mock_click)
+        assert mouse_control.left_click_pos is not None
+
+        # Then release
+        mock_release = Mock()
+        mock_release.button = MouseButton.LEFT
+        mouse_control.on_release(mock_release)
+        assert mouse_control.left_click_pos is None
+
+    def test_right_release(self, mouse_setup):
+        """Test right mouse button release."""
+        _, ax, mouse_control = mouse_setup
+        # First click
+        mock_click = Mock()
+        mock_click.button = MouseButton.RIGHT
+        mock_click.inaxes = ax
+        mock_click.xdata = 7.0
+        mock_click.ydata = 7.0
+        mouse_control.on_click(mock_click)
+        assert mouse_control.right_click_pos is not None
+
+        # Then release
+        mock_release = Mock()
+        mock_release.button = MouseButton.RIGHT
+        mouse_control.on_release(mock_release)
+        assert mouse_control.right_click_pos is None
+
+
+class TestPynputIsImportedLazily:
+    """pynput (an input-device library, ~85 ms to import) must only load when used."""
+
+    @staticmethod
+    def _modules_after(code):
+        import subprocess
+        import sys
+
+        script = f"import sys\n{code}\nprint('pynput' in sys.modules)"
+        out = subprocess.run(
+            [sys.executable, "-c", script], capture_output=True, text=True, check=True
+        )
+        return out.stdout.strip().splitlines()[-1] == "True"
+
+    def test_import_and_headless_env_do_not_load_pynput(self, tmp_path):
+        assert not self._modules_after("import irsim")
+        yaml_file = tmp_path / "w.yaml"
+        yaml_file.write_text(
+            "world: {height: 5, width: 5}\nrobot:\n  - {kinematics: {name: diff}, shape: {name: circle, radius: 0.2}, state: [1, 1, 0]}\n"
+        )
+        assert not self._modules_after(
+            f"import irsim\nenv = irsim.make({str(yaml_file)!r}, headless=True, log_level='ERROR')\nenv.step()\nenv.end()"
+        )
+
+    @requires_pynput
+    def test_pynput_backend_loads_it(self):
+        import os
+
+        yaml_file = os.path.abspath("test_keyboard_control.yaml")
+        assert self._modules_after(
+            f"import irsim\nenv = irsim.make({yaml_file!r}, display=False, log_level='ERROR')\nenv.end()"
+        )
+
+    def test_load_pynput_returns_none_when_unavailable(self, monkeypatch):
+        import sys
+
+        import irsim.gui.keyboard_control as kb
+
+        monkeypatch.setattr(kb, "keyboard", None)
+        monkeypatch.setattr(kb, "_pynput_missing", False)
+        monkeypatch.setitem(
+            sys.modules, "pynput", None
+        )  # makes ``from pynput import keyboard`` fail
+        assert kb._load_pynput() is None
+        assert kb._pynput_missing  # remembered, so the import is not retried

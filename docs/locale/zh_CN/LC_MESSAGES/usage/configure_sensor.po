@@ -1,0 +1,265 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) 2024, Ruihua Han
+# This file is distributed under the same license as the IR-SIM package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2025.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: IR-SIM\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-07-24 20:39+0800\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: zh_CN <LL@li.org>\n"
+"Language: zh_CN\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"Generated-By: Babel 2.17.0\n"
+
+#: ../../source/usage/configure_sensor.md:1
+msgid "Configure Sensors for the robot"
+msgstr "为机器人配置传感器"
+
+#: ../../source/usage/configure_sensor.md:3
+msgid "Robots can carry sensors for environment perception. IR-SIM provides a 2D LiDAR (`lidar2d`), a simplified 2D FMCW LiDAR (`fmcw_lidar2d`, with per-beam radial velocity) and a contact sensor (`contact2d`, for the `contact` collision mode), plus an optional field-of-view (FOV) region; all are attached per object in the YAML file. This page shows how to configure them and tune noise."
+msgstr "机器人可以携带传感器进行环境感知。IR-SIM 提供 2D 激光雷达（`lidar2d`）、简化的 2D FMCW 激光雷达（`fmcw_lidar2d`，每条光束附带径向速度）和接触传感器（`contact2d`，用于 `contact` 碰撞模式），以及可选的视场（FOV）区域；它们都在 YAML 文件中按对象进行配置。本页展示如何配置它们并调节噪声。"
+
+#: ../../source/usage/configure_sensor.md:5
+msgid "LiDAR Configuration Parameters"
+msgstr "LiDAR 配置参数"
+
+#: ../../source/usage/configure_sensor.md:7
+msgid ""
+"The YAML configuration file and Python Script below shows an example of a "
+"robot with a 2D LiDAR sensor:"
+msgstr "下面的 YAML 配置与 Python 脚本展示了带 2D LiDAR 传感器的机器人示例："
+
+#: ../../source/usage/configure_sensor.md:0
+msgid "Python Script"
+msgstr "Python 脚本"
+
+#: ../../source/usage/configure_sensor.md:0
+msgid "YAML Configuration"
+msgstr "YAML 配置"
+
+#: ../../source/usage/configure_sensor.md:33
+msgid "YAML file (same name as the python script):"
+msgstr "与 Python 脚本同名的 YAML 文件："
+
+#: ../../source/usage/configure_sensor.md:0
+msgid "Demonstration"
+msgstr "演示"
+
+#: ../../source/usage/configure_sensor.md:88
+#: ../../source/usage/configure_sensor.md:429
+msgid "Select Parameters"
+msgstr "参数选择"
+
+#: ../../source/usage/configure_sensor.md:97
+msgid "Update order"
+msgstr "更新顺序"
+
+#: ../../source/usage/configure_sensor.md:99
+msgid ""
+"The environment updates sensors after all objects have moved in a step. This "
+"avoids temporal skew in readings. If you control objects manually, either "
+"pass `sensor_step=True` to `ObjectBase.step(...)` or call "
+"`obj.sensor_step()` after updating object states."
+msgstr ""
+"环境会在所有对象完成该时间步移动后再更新传感器，从而避免读数的时间偏差。若手"
+"动控制对象，请在 `ObjectBase.step(...)` 中传入 `sensor_step=True`，或在更新对"
+"象状态后调用 `obj.sensor_step()`。"
+
+#: ../../source/usage/configure_sensor.md:102
+msgid "Important Parameters Explained"
+msgstr "关键参数说明"
+
+#: ../../source/usage/configure_sensor.md:104
+msgid ""
+"To configure the 2D LiDAR sensor, the sensor name of `lidar2d` should be "
+"defined in the `sensors` section of the robot. Key parameters of the LiDAR "
+"sensor are explained below:"
+msgstr ""
+"若要配置 2D LiDAR，需在机器人 `sensors` 部分定义名为 `lidar2d` 的传感器。主要"
+"参数如下："
+
+#: ../../source/usage/configure_sensor.md:106
+msgid "**range_min**: The minimum range of the laser beam. A return closer than this is reported at `range_min`: the beam counts as blocked but carries no measurement."
+msgstr "**range_min**：激光束的最小量程。比它更近的回波按 `range_min` 报告：该光束视为被遮挡，但不携带测量值。"
+
+#: ../../source/usage/configure_sensor.md:107
+msgid "**range_max**: The maximum range of the laser beam."
+msgstr "**range_max**：激光束的最大量程。"
+
+#: ../../source/usage/configure_sensor.md:108
+msgid ""
+"**angle_range**: The angle range of the laser beam. Use `6.283185` or `2 * "
+"pi` in Python for a full 360-degree scan."
+msgstr ""
+"**angle_range**：激光束覆盖的角度范围。完整的 360 度扫描可在 YAML 中使用 "
+"`6.283185`，或在 Python 中使用 `2 * pi`。"
+
+#: ../../source/usage/configure_sensor.md:109
+msgid "**number**: The number of beams."
+msgstr "**number**：束数量。"
+
+#: ../../source/usage/configure_sensor.md:110
+msgid "**alpha**: The transparency of the laser beam."
+msgstr "**alpha**：激光束透明度。"
+
+#: ../../source/usage/configure_sensor.md:112
+msgid ""
+"A full list of parameters can be found in the [YAML Configuration](../"
+"yaml_config/configuration.md)."
+msgstr "完整参数列表见 [YAML 配置](../yaml_config/configuration.md)。"
+
+#: ../../source/usage/configure_sensor.md:115
+msgid "Advanced Lidar Configuration with noise"
+msgstr "带噪声的高级 LiDAR 配置"
+
+#: ../../source/usage/configure_sensor.md:117
+msgid ""
+"To add noise to the LiDAR sensor, you can set the `noise` parameter to "
+"`True`."
+msgstr "若需为 LiDAR 添加噪声，可将 `noise` 设为 `True`。"
+
+#: ../../source/usage/configure_sensor.md:185
+msgid "LiDAR scan with Gaussian noise"
+msgstr "带高斯噪声的 LiDAR 扫描"
+
+#: ../../source/usage/configure_sensor.md:194
+msgid "Gaussian noise is added to the beams that hit something: `std` is the standard deviation of the range noise and `angle_std`, off at its default of `0`, that of each beam's direction. Noisy ranges stay within `[range_min, range_max]`, a hit pushed beyond `range_max` becomes a miss, and misses stay at `range_max` without noise."
+msgstr "高斯噪声只加在击中物体的光束上：`std` 是距离噪声的标准差，`angle_std`（默认 `0`，即关闭）是每条光束方向噪声的标准差。带噪声的距离保持在 `[range_min, range_max]` 内，被推到 `range_max` 之外的击中会变成未命中，未命中的光束保持 `range_max` 且不加噪声。"
+
+#: ../../source/usage/configure_sensor.md:196
+msgid "FMCW LiDAR Configuration Parameters"
+msgstr "FMCW 激光雷达配置参数"
+
+#: ../../source/usage/configure_sensor.md:198
+msgid "IR-SIM also provides a simplified 2D FMCW LiDAR sensor named `fmcw_lidar2d`. It keeps the same beam geometry as the standard 2D LiDAR, but each valid beam additionally reports a scalar `radial_velocity` measurement. This makes it useful for demonstrating how Doppler measurements can help interpret dynamic obstacles. `valid` marks the beams whose range lies inside `[range_min, range_max]`; a return closer than `range_min` is reported at `range_min` and left invalid, so the beam still counts as blocked."
+msgstr "IR-SIM 还提供了一个简化的 2D FMCW 激光雷达传感器，名为 `fmcw_lidar2d`。它保持与标准 2D 激光雷达相同的光束几何结构，但每条有效光束会额外返回一个标量 `radial_velocity`（径向速度）测量值。这便于演示多普勒测量如何帮助理解动态障碍物。`valid` 标记距离位于 `[range_min, range_max]` 内的光束；比 `range_min` 更近的回波按 `range_min` 报告并保持无效，因此该光束仍视为被遮挡。"
+
+#: ../../source/usage/configure_sensor.md:200
+msgid ""
+"The example below uses a stationary ego sensor with a forward 120-degree "
+"field of view and multiple moving obstacles. When plotting is enabled, valid "
+"returns are colorized by radial velocity and marked at their endpoints."
+msgstr ""
+"下方示例使用一个静止的传感器主体，朝前方覆盖 120 度视场，并设置了多个移动障碍"
+"物。开启绘图后，有效回波会按径向速度着色，并在端点处标记出来。"
+
+#: ../../source/usage/configure_sensor.md:326
+msgid "FMCW LiDAR beams colored by the radial velocity of moving obstacles"
+msgstr "按运动障碍物径向速度着色的 FMCW 激光雷达波束"
+
+#: ../../source/usage/configure_sensor.md:334
+msgid "Key FMCW-specific parameters are:"
+msgstr "FMCW 专用关键参数："
+
+#: ../../source/usage/configure_sensor.md:336
+msgid ""
+"**motion_compensate**: Whether to remove ego-motion from the measured radial "
+"velocity."
+msgstr "**motion_compensate**：是否从测量的径向速度中扣除自身运动分量。"
+
+#: ../../source/usage/configure_sensor.md:337
+msgid ""
+"**velocity_noise_std**: Standard deviation of Gaussian noise applied to "
+"`radial_velocity`."
+msgstr "**velocity_noise_std**：施加在 `radial_velocity` 上的高斯噪声标准差。"
+
+#: ../../source/usage/configure_sensor.md:339
+msgid ""
+"Visualization parameters live under the sensor's **`plot:`** sub-dict "
+"(consistent with `lidar2d` and object `plot:`); flat top-level keys are "
+"still accepted for backward compatibility:"
+msgstr ""
+"可视化参数位于传感器的 **`plot:`** 子字典下（与 `lidar2d` 及对象的 `plot:` 一"
+"致）；为保持向后兼容，扁平的顶层键仍然被接受："
+
+#: ../../source/usage/configure_sensor.md:341
+msgid ""
+"**velocity_color**: Whether to colorize valid beams by radial velocity "
+"during plotting."
+msgstr "**velocity_color**：绘图时是否按径向速度对有效光束着色。"
+
+#: ../../source/usage/configure_sensor.md:342
+msgid ""
+"**velocity_color_max**: Velocity magnitude where the plotting color "
+"saturates."
+msgstr "**velocity_color_max**：绘图颜色达到饱和的速度幅值。"
+
+#: ../../source/usage/configure_sensor.md:344
+msgid "The returned scan keeps the standard LiDAR angle metadata and adds:"
+msgstr "返回的扫描数据保留了标准激光雷达的角度元数据，并新增以下字段："
+
+#: ../../source/usage/configure_sensor.md:346
+msgid "**radial_velocity**: Scalar radial velocity for each beam."
+msgstr "**radial_velocity**：每条光束的标量径向速度。"
+
+#: ../../source/usage/configure_sensor.md:347
+msgid "**valid**: Whether the beam has a valid return within `range_max`."
+msgstr "**valid**：该光束是否在 `range_max` 范围内有有效回波。"
+
+#: ../../source/usage/configure_sensor.md:349
+msgid ""
+"The complete runnable example is available under `usage/22fmcw_lidar_world/`."
+msgstr "完整可运行示例位于 `usage/22fmcw_lidar_world/`。"
+
+#: ../../source/usage/configure_sensor.md:352
+msgid "FOV Configuration Parameters"
+msgstr "视场（FOV）配置参数"
+
+#: ../../source/usage/configure_sensor.md:354
+msgid ""
+"The YAML configuration file and Python Script below shows an example of "
+"objects within the field of view (FOV). The FOV is defined by the `fov` "
+"(float) and `fov_radius` (float) parameters in the object configuration. "
+"Each object has a FOV that can detect the robot within the FOV by the "
+"function `fov_detect_object()`."
+msgstr ""
+"下方的 YAML 配置与 Python 脚本展示了 FOV 中的对象示例。FOV 由对象配置中的 "
+"`fov`（角度）与 `fov_radius`（半径）参数定义。每个对象都拥有 FOV，可通过 "
+"`fov_detect_object()` 检测视场内的机器人。"
+
+#: ../../source/usage/configure_sensor.md:194
+msgid "**Range conventions.** A beam that hits nothing reads `range_max`, the value Isaac Sim's LaserScan bridge publishes as well, so `ranges` stays finite for learning pipelines. `get_scan()[\"valid\"]` marks the beams with a usable return: a hit whose range lies inside `[range_min, range_max]`. Misses and returns inside the blind zone are invalid, and the latter read `range_min` so the beam still counts as blocked; `get_points()` turns only valid beams into points. The ROS-style {py:class}`~irsim.msg.LaserScan` from `env.get_msg()` carries the same finite ranges by default, so snapshots used for learning are unchanged; `env.get_msg(use_inf=True)` follows REP 117 instead, as Gazebo does: `+inf` for no return and `-inf` for a return too close to measure."
+msgstr "**量程约定。** 未击中任何物体的光束读数为 `range_max`，这也是 Isaac Sim 的 LaserScan 桥接所发布的值，因此 `ranges` 对学习流水线始终是有限值。`get_scan()[\"valid\"]` 标记有可用回波的光束：距离位于 `[range_min, range_max]` 内的击中。未命中以及盲区内的回波为无效，后者读数为 `range_min`，因此该光束仍视为被遮挡；`get_points()` 只把有效光束转换为点。`env.get_msg()` 返回的 ROS 风格 {py:class}`~irsim.msg.LaserScan` 默认携带同样的有限距离，因此用于学习的快照不受影响；`env.get_msg(use_inf=True)` 则遵循 REP 117（与 Gazebo 一致）：无回波为 `+inf`，距离过近无法测量的回波为 `-inf`。"
+
+#: ../../source/usage/configure_sensor.md:352
+msgid "Contact Sensor Configuration Parameters"
+msgstr "接触传感器配置参数"
+
+#: ../../source/usage/configure_sensor.md:354
+msgid "In `collision_mode: 'contact'` every object carries a built-in contact sensor, `obj.contact`, written by the contact solver each step, so its readings are always available: `obj.contact.in_contact`, `obj.contact.partners`, `obj.contact.reports` (one report per contact with `other`, `point`, `normal`, `depth` and `force`), `obj.contact.force`, `obj.contact.contact_time`, `obj.contact.air_time`, `obj.contact.started` and `obj.contact.ended`. The *Physical Properties and Contact Mode* section of [Configure Robots and Obstacles](configure_robots_obstacles.md) explains what the contact model computes."
+msgstr "在 `collision_mode: 'contact'` 下，每个对象都自带一个接触传感器 `obj.contact`，由接触求解器每步写入，因此其读数始终可用：`obj.contact.in_contact`、`obj.contact.partners`、`obj.contact.reports`（每个接触一条报告，含 `other`、`point`、`normal`、`depth` 和 `force`）、`obj.contact.force`、`obj.contact.contact_time`、`obj.contact.air_time`、`obj.contact.started` 和 `obj.contact.ended`。接触模型的计算内容见[配置机器人和障碍物](configure_robots_obstacles.md)中的 *Physical Properties and Contact Mode* 一节。"
+
+#: ../../source/usage/configure_sensor.md:354
+msgid "Listing the sensor under `sensors` as `type: 'contact2d'` also draws it, as the contact sensor visualizer of Isaac Sim does: a marker at each contact point and a line along the contact normal whose length is the contact force times `force_scale`. The sensor has no functional parameters; the visualization options go under its `plot:` sub-dict:"
+msgstr "在 `sensors` 下以 `type: 'contact2d'` 列出该传感器还会将其绘制出来，如同 Isaac Sim 的接触传感器可视化：在每个接触点画一个标记，并沿接触法线画一条线，其长度为接触力乘以 `force_scale`。该传感器没有功能参数；可视化选项放在它的 `plot:` 子字典下："
+
+#: ../../source/usage/configure_sensor.md:354
+msgid "**force_scale** (float, default `0.05`): Length of the force line per newton, in meters."
+msgstr "**force_scale**（float，默认 `0.05`）：每牛顿力线的长度，单位为米。"
+
+#: ../../source/usage/configure_sensor.md:354
+msgid "**marker_size** (float, default `6`): Size of the contact point markers."
+msgstr "**marker_size**（float，默认 `6`）：接触点标记的大小。"
+
+#: ../../source/usage/configure_sensor.md:354
+msgid "**linewidth** (float, default `1.5`): Width of the force lines."
+msgstr "**linewidth**（float，默认 `1.5`）：力线的线宽。"
+
+#: ../../source/usage/configure_sensor.md:354
+msgid "**alpha** (float, default `0.9`): Transparency of the drawing."
+msgstr "**alpha**（float，默认 `0.9`）：绘制的透明度。"
+
+#: ../../source/usage/configure_sensor.md:354
+msgid "**color** (str, default the palette `marker` color): Color of the markers and lines."
+msgstr "**color**（str，默认调色板的 `marker` 颜色）：标记和线的颜色。"
+
+#: ../../source/usage/configure_sensor.md:354
+msgid "The complete runnable example is available under `usage/26push_box_world/`."
+msgstr "完整可运行示例位于 `usage/26push_box_world/`。"

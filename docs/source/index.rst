@@ -1,0 +1,292 @@
+.. IR-SIM documentation master file, created by
+   sphinx-quickstart on Tue Aug  6 00:59:39 2024.
+   You can adapt this file completely to your liking, but it should at least
+   contain the root `toctree` directive.
+
+:html_theme.sidebar_secondary.remove: true
+
+.. rst-class:: landing-hero
+
+==================================
+Welcome to IR-SIM's documentation!
+==================================
+
+**IR-SIM** is an open-source, lightweight Python robot simulator for navigation, control, and learning. It pairs a simple, user-friendly framework with built-in collision detection for modeling robots, sensors, and environments, so you can prototype robotics and AI algorithms in custom scenarios with minimal code and hardware.
+
+.. grid:: 1 2 3 5
+    :gutter: 2
+    :class-container: hero-cta
+
+    .. grid-item-card:: 🚀 Get Started
+        :link: get_started/index
+        :link-type: doc
+        :text-align: center
+        :class-card: hero-cta-primary
+
+    .. grid-item-card:: 📚 User Guide
+        :link: usage/index
+        :link-type: doc
+        :text-align: center
+
+    .. grid-item-card:: ⚙️ Configuration
+        :link: yaml_config/index
+        :link-type: doc
+        :text-align: center
+
+    .. grid-item-card:: 🔧 API Reference
+        :link: api/index
+        :link-type: doc
+        :text-align: center
+
+    .. grid-item-card:: ⭐ GitHub
+        :link: https://github.com/hanruihua/ir-sim
+        :text-align: center
+
+Key Features
+============
+
+- Simulate a wide range of robot platforms with diverse kinematics, sensors, and behaviors
+- Quickly configure and customize simulation scenarios using straightforward YAML files, with no complex coding required
+- Visualize simulation outcomes in real time for immediate feedback and analysis using matplotlib
+- Support collision detection and behavior control for each object in the simulation
+- Suitable for multi-agent and robot learning research
+
+See IR-SIM in action
+====================
+
+.. grid:: 1 2 3 3
+    :gutter: 3
+    :class-container: showcase-grid
+
+    .. grid-item-card::
+        :shadow: lg
+        :text-align: center
+
+        .. image:: https://raw.githubusercontent.com/IR-SIM/ir-sim-gifs/main/behavior/rvo.gif
+           :width: 70%
+           :alt: Multi-Robot RVO Collision Avoidance
+
+        +++
+        Multi-Robot RVO Collision Avoidance
+
+    .. grid-item-card::
+        :shadow: lg
+        :text-align: center
+
+        .. image:: https://raw.githubusercontent.com/IR-SIM/ir-sim-gifs/main/behavior/orca_world.gif
+           :width: 70%
+           :alt: 200-Agent ORCA via pyrvo
+
+        +++
+        200-Agent ORCA via pyrvo
+
+    .. grid-item-card::
+        :shadow: lg
+        :text-align: center
+
+        .. image:: https://raw.githubusercontent.com/IR-SIM/ir-sim-gifs/main/behavior/sfm_world.gif
+           :width: 70%
+           :alt: Social Force Model (SFM)
+
+        +++
+        Social Force Model (SFM)
+
+    .. grid-item-card::
+        :shadow: lg
+        :text-align: center
+
+        .. image:: https://raw.githubusercontent.com/IR-SIM/ir-sim-gifs/main/grid_map/grid_map.gif
+           :width: 70%
+           :alt: Ackermann Robot with 2D LiDAR
+
+        +++
+        Ackermann Robot with 2D LiDAR
+
+    .. grid-item-card::
+        :shadow: lg
+        :text-align: center
+
+        .. image:: https://raw.githubusercontent.com/IR-SIM/ir-sim-gifs/main/sensors/fov.gif
+           :width: 70%
+           :alt: Field-of-View Detection
+
+        +++
+        Field-of-View Detection
+
+    .. grid-item-card::
+        :shadow: lg
+        :text-align: center
+
+        .. image:: https://raw.githubusercontent.com/IR-SIM/ir-sim-gifs/main/grid_map/grid_map_hm3d.gif
+           :width: 70%
+           :alt: HM3D / MatterPort3D Grid Map
+
+        +++
+        HM3D / MatterPort3D Grid Map
+
+    .. grid-item-card::
+        :shadow: lg
+        :text-align: center
+
+        .. image:: https://raw.githubusercontent.com/IR-SIM/ir-sim-gifs/main/dynamic_random_env/random_obstacles.gif
+           :width: 70%
+           :alt: Dynamic Random Obstacles
+
+        +++
+        Dynamic Random Obstacles
+
+    .. grid-item-card::
+        :shadow: lg
+        :text-align: center
+
+        .. image:: https://raw.githubusercontent.com/IR-SIM/ir-sim-gifs/main/keyboard_mouse/keyboard.gif
+           :width: 70%
+           :alt: Keyboard Control
+
+        +++
+        Keyboard Control
+
+    .. grid-item-card::
+        :shadow: lg
+        :text-align: center
+
+        .. image:: https://raw.githubusercontent.com/IR-SIM/ir-sim-gifs/main/grid_map/fog_grid_map.gif
+           :width: 70%
+           :alt: Fog-of-Map Exploration
+
+        +++
+        Fog-of-Map Exploration
+
+Capabilities
+============
+
+.. list-table::
+   :widths: 22 78
+
+   * - **Kinematics**
+     - Differential drive · Omnidirectional · Omnidirectional (angular) · Ackermann steering
+   * - **Sensors**
+     - 2D LiDAR · 2D FMCW LiDAR · Contact sensor · FOV detector
+   * - **Geometries**
+     - Circle · Rectangle · Polygon · LineString · Binary grid map
+   * - **Behaviors**
+     - dash · RVO · ORCA · SFM (Social Force Model)
+
+Installation
+============
+
+Install the latest release from PyPI:
+
+.. code-block:: bash
+
+    pip install ir-sim
+
+Prefer conda or uv? Pick your installation method:
+
+.. grid:: 1 3 3 3
+
+    .. grid-item-card:: 📦 pip
+        :link: get_started/install
+        :link-type: doc
+        :text-align: center
+        :shadow: md
+
+        :bdg-success:`Recommended`
+
+        ^^^
+
+        Quick installation with pip
+
+    .. grid-item-card:: 🐍 conda
+        :link: get_started/install
+        :link-type: doc
+        :text-align: center
+        :shadow: md
+
+        :bdg-info:`Popular`
+
+        ^^^
+
+        Installation in conda environment
+
+    .. grid-item-card:: ⚡ uv
+        :link: get_started/install
+        :link-type: doc
+        :text-align: center
+        :shadow: md
+
+        :bdg-warning:`Fast`
+
+        ^^^
+
+        Lightning-fast installation
+
+Projects using IR-SIM
+=====================
+
+.. grid:: 1 1 1 1
+
+    .. grid-item-card:: Academic Publications
+        :shadow: md
+
+        * `rl-rvo-nav (RAL & ICRA2023) <https://github.com/hanruihua/rl_rvo_nav>`_ - Reinforcement learning-based RVO behavior for multi-robot navigation.
+        * `RDA_planner (RAL & IROS2023) <https://github.com/hanruihua/RDA_planner>`_ - Accelerated collision-free motion planner for cluttered environments.
+        * `NeuPAN (T-RO 2025) <https://github.com/hanruihua/NeuPAN>`_ - Direct point robot navigation with end-to-end model-based learning.
+        * `MfNeuPAN (ROBIO 2025) <https://doi.org/10.1109/ROBIO66223.2025.11377233>`_ - Proactive end-to-end navigation in dynamic environments using direct multi-frame point constraints.
+        * `SDLW (IROS 2026) <https://github.com/williamleong/sdlw>`_ - Decentralized scalable exploration using sensor-driven Lévy walks for minimal-sensing robot teams.
+        * `PPO-GAT-Follow (Sensors 2026) <https://doi.org/10.3390/s26154711>`_ - Graph-attention reinforcement learning for robot person following in dense crowds.
+        * `Energy-Efficient Federated Edge Learning for Small-Scale Datasets in Large IoT Networks (TWC 2026) <https://doi.org/10.1109/TWC.2026.3683911>`_ - Federated edge learning validated through autonomous navigation and collision avoidance in IR-SIM.
+
+    .. grid-item-card:: Community Projects
+        :shadow: md
+
+        * `DRL-robot-navigation-IR-SIM <https://github.com/reiniscimurs/DRL-robot-navigation-IR-SIM>`_ - Deep reinforcement learning for robot navigation.
+        * `AutoNavRL <https://github.com/harshmahesheka/AutoNavRL>`_ - Autonomous navigation using reinforcement learning.
+        * `IRSIM-3DGS-Bridge <https://github.com/Wayneyujie/IRSIM-3DGS-Bridge>`_ - A closed-loop bridge from 3D Gaussian Splatting scenes to IR-SIM planning/following and back to Habitat-GS trajectory playback.
+        * `EdgeVox <https://github.com/nrl-ai/edgevox>`_ - Offline voice-agent framework with an IR-SIM mobile-navigation backend.
+
+    .. grid-item-card:: Courses Using IR-SIM
+        :shadow: md
+
+        * `COMP3356 Robotics <https://www.cs.hku.hk/index.php/programmes/course-offered?infile=2026/comp3356.html>`_ - The University of Hong Kong (HKU).
+        * `CS401 Intelligent Robotics <https://github.com/Intelligent-Robot-Course>`_ - Southern University of Science and Technology (SUSTech).
+
+If your publication, project, or course uses IR-SIM, we welcome you to propose it for inclusion via an issue or pull request.
+
+Citation
+========
+
+If you find IR-SIM useful, please consider starring ⭐ the project on GitHub and citing our paper:
+
+.. code-block:: bibtex
+
+    @article{han2026ir,
+      title={IR-SIM: A Lightweight Declarative Simulator for Navigation Learning and Benchmarking},
+      author={Han, Ruihua and Wang, Shuai and Li, Chengyang and Gao, Rui and Wang, Xinyi and Liu, Zhe and Li, Guoliang and Lu, Yupu and Hao, Qi and Pan, Jia and Zhao, Hengshuang},
+      journal={arXiv preprint arXiv:2606.08729},
+      year={2026},
+      doi={10.48550/arXiv.2606.08729},
+      url={https://arxiv.org/abs/2606.08729},
+      eprint={2606.08729},
+      archivePrefix={arXiv},
+      primaryClass={cs.RO}
+    }
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Documentation
+   :hidden:
+
+   Getting Started <get_started/index>
+   User Guide <usage/index>
+   Configuration <yaml_config/index>
+   API Reference <api/index>
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Development
+   :hidden:
+
+   Contributing <contributing>
+   Changelog <changelog>
+   About Us <about_us>

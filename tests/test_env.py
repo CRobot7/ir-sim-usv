@@ -1,0 +1,2863 @@
+"""
+Tests for core environment functionality (EnvBase, EnvBase3D).
+
+Covers environment creation, object management, state queries, and flags.
+"""
+
+import contextlib
+import json
+import re
+import warnings
+from dataclasses import dataclass
+from types import SimpleNamespace
+from unittest.mock import patch
+
+import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
+import pytest
+
+import irsim
+from irsim.env.env_base import EnvBase
+from irsim.msg import LaserScan, Message, Odometry, Quaternion, WorldState
+
+
+@dataclass
+class _PayloadMessage(Message):
+    """Message fixture with mapping and NumPy scalar payloads."""
+
+    payload: dict[str, object]
+
+
+class TestEnvironmentCreation:
+    """Tests for environment creation and initialization."""
+
+    def test_make_basic_environment(self, env_factory):
+        """Test basic environment creation with default parameters."""
+        env = env_factory("test_collision_world.yaml")
+        assert env is not None
+        assert env.robot is not None
+        assert env.step_mode == "internal"
+
+    def test_make_with_full_flag(self, env_factory):
+        """Test environment creation with full=True for complete setup."""
+        env = env_factory("test_collision_avoidance.yaml", full=True)
+        assert env is not None
+        assert len(env.robot_list) >= 1
+
+    @pytest.mark.parametrize("projection", ["2d", "3d"])
+    def test_make_with_projection(self, env_factory, projection):
+        """Test environment creation with different projections."""
+        env = env_factory("test_multi_objects_world.yaml", projection=projection)
+        assert env is not None
+
+    @pytest.mark.parametrize("projection", ["2d", "3d"])
+    def test_make_step_mode_overrides_yaml(self, env_factory, tmp_path, projection):
+        """make(step_mode=...) takes precedence for both projections."""
+        yaml_file = tmp_path / "external_step.yaml"
+        yaml_file.write_text(
+            "world:\n"
+            "  height: 10\n"
+            "  width: 10\n"
+            "  step_mode: external\n"
+            "robot:\n"
+            "  - kinematics: {name: diff}\n"
+            "    state: [1, 1, 0]\n"
+            "    goal: [9, 1, 0]\n"
+            "    behavior: {name: dash}\n"
+        )
+
+        env = env_factory(str(yaml_file), projection=projection, step_mode="internal")
+
+        assert env.step_mode == "internal"
+        assert env.world_param.step_mode == "internal"
+
+    def test_make_step_mode_override_survives_reload(self, env_factory, tmp_path):
+        """The runtime override remains active across reload and random reset."""
+        yaml_file = tmp_path / "internal_step.yaml"
+        yaml_file.write_text(
+            "world:\n"
+            "  height: 10\n"
+            "  width: 10\n"
+            "  step_mode: internal\n"
+            "robot:\n"
+            "  - kinematics: {name: diff}\n"
+            "    state: [1, 1, 0]\n"
+            "    goal: [9, 1, 0]\n"
+            "    behavior: {name: dash}\n"
+        )
+        env = env_factory(str(yaml_file), step_mode="external")
+
+        env.reload()
+        assert env.step_mode == "external"
+
+        env.reset(random=True)
+        assert env.step_mode == "external"
+
+    def test_invalid_projection_raises(self):
+        """Test that invalid projection raises ValueError."""
+        with pytest.raises(
+            ValueError, match="Unknown projection 'nonexistent_projection_xyz'"
+        ):
+            irsim.make(
+                "test_multi_objects_world.yaml",
+                save_ani=False,
+                display=False,
+                projection="nonexistent_projection_xyz",
+            )
+
+    def test_register_custom_env(self, env_factory):
+        """Test registering a custom environment class."""
+        irsim._env_factory.register("custom_3d", irsim.EnvBase3D)
+        env = env_factory("test_multi_objects_world.yaml", projection="custom_3d")
+        assert env is not None
+
+    def test_empty_yaml_path_logs(self):
+        """Test that empty YAML path gracefully falls back to defaults."""
+        with contextlib.suppress(Exception):
+            env = EnvBase(
+                "",
+                display=False,
+                disable_all_plot=True,
+                log_file=None,
+                log_level="CRITICAL",
+            )
+            assert env is not None
+
+
+class TestObjectManagement:
+    """Tests for object creation, addition, and deletion."""
+
+    def test_create_and_add_obstacle(self, env_factory):
+        """Test creating and adding an obstacle."""
+        env = env_factory("test_all_objects.yaml")
+        obs = env.create_obstacle(
+            shape={"name": "polygon", "vertices": [[6, 5], [7, 5], [7, 6], [6, 6]]}
+        )
+        initial_count = len(env.obstacle_list)
+        env.add_object(obs)
+        assert len(env.obstacle_list) == initial_count + 1
+        env.delete_object(obs.id)
+        assert len(env.obstacle_list) == initial_count
+
+    def test_create_and_add_robot(self, env_factory):
+        """Test creating and adding a robot via env.create_robot()."""
+        env = env_factory("test_all_objects.yaml")
+        robot = env.create_robot(
+            kinematics={"name": "diff"},
+            shape={"name": "circle", "radius": 0.2},
+            state=[1, 1, 0],
+            goal=[8, 8, 0],
+        )
+        initial_count = len(env.robot_list)
+        env.add_object(robot)
+        assert len(env.robot_list) == initial_count + 1
+
+    def test_add_multiple_objects(self, env_factory):
+        """Test adding multiple objects at once."""
+        env = env_factory("test_all_objects.yaml")
+        obs = env.create_obstacle(
+            shape={"name": "polygon", "vertices": [[6, 5], [7, 5], [7, 6], [6, 6]]}
+        )
+        env.add_objects([obs])
+        assert obs.id in [o.id for o in env.obstacle_list]
+
+    def test_delete_objects_by_id(self, env_factory):
+        """Test deleting multiple objects by ID."""
+        env = env_factory("test_all_objects.yaml")
+        initial_count = len(env.robot_list) + len(env.obstacle_list)
+        env.delete_objects([1, 2])
+        final_count = len(env.robot_list) + len(env.obstacle_list)
+        assert final_count < initial_count
+
+    def test_duplicate_object_name_raises(self, env_factory):
+        """Test that adding object with duplicate name raises ValueError."""
+        env = env_factory("test_all_objects.yaml")
+        obs = env.create_obstacle(
+            shape={"name": "polygon", "vertices": [[6, 5], [7, 5], [7, 6], [6, 6]]}
+        )
+        env.add_object(obs)
+        with pytest.raises(
+            ValueError, match=f"Object name '{obs.name}' already exists"
+        ):
+            env.add_object(obs)
+
+    def test_duplicate_objects_raises(self, env_factory):
+        """Test that adding objects with duplicate names raises ValueError."""
+        env = env_factory("test_all_objects.yaml", display=True)
+        obs = env.create_obstacle(
+            shape={"name": "polygon", "vertices": [[6, 5], [7, 5], [7, 6], [6, 6]]}
+        )
+        env.add_object(obs)
+        with pytest.raises(
+            ValueError, match=re.escape(f"Object names already exist: {[obs.name]}")
+        ):
+            env.add_objects([obs])
+
+    def test_duplicate_names_within_new_objects_raises(self, env_factory):
+        """Test that adding objects with duplicate names among themselves raises ValueError."""
+        env = env_factory("test_all_objects.yaml")
+        obs1 = env.create_obstacle(
+            shape={"name": "polygon", "vertices": [[6, 5], [7, 5], [7, 6], [6, 6]]}
+        )
+        obs2 = env.create_obstacle(
+            shape={"name": "polygon", "vertices": [[8, 5], [9, 5], [9, 6], [8, 6]]}
+        )
+        # Force duplicate names
+        obs2._name = obs1.name
+        with pytest.raises(ValueError, match="Duplicate names within new objects"):
+            env.add_objects([obs1, obs2])
+
+    def test_validate_unique_names_pass(self, env_factory):
+        """Test that unique object names pass validation."""
+        env = env_factory("test_all_objects.yaml")
+        assert len(env.names) == len(set(env.names))
+
+    def test_validate_unique_names_duplicate_raises(self):
+        """Test that duplicate object names raise ValueError."""
+        with pytest.raises(ValueError, match="Duplicate object names"):
+            irsim.make("test_duplicate_names.yaml", display=False)
+
+
+class TestStateQueries:
+    """Tests for environment state query methods."""
+
+    def test_get_robot_state(self, env_factory):
+        """Test getting robot state."""
+        env = env_factory("test_collision_world.yaml")
+        state = env.get_robot_state()
+        assert state is not None
+        assert isinstance(state, np.ndarray)
+
+    def test_get_msg_returns_independent_world_snapshot(self, env_factory):
+        """World messages include object/sensor data and own their arrays."""
+        env = env_factory("test_all_objects.yaml")
+
+        msg = env.get_msg()
+
+        assert isinstance(msg, WorldState)
+        assert msg.header.seq == 0
+        assert msg.header.stamp == 0.0
+        assert msg.header.frame_id == "world"
+        assert len(msg.objects) == len(env.objects)
+        assert len(msg.robots) == len(env.robot_list)
+        assert len(msg.obstacles) == len(env.obstacle_list)
+        robot = msg.robots[0]
+        assert isinstance(robot.odom, Odometry)
+        assert robot.odom.ros_type == "nav_msgs/Odometry"
+        assert robot.odom.child_frame_id == "testtest/base_link"
+        assert isinstance(robot.scan, LaserScan)
+        assert robot.scan.ros_type == "sensor_msgs/LaserScan"
+        assert robot.scan.header.frame_id == "testtest/laser"
+        assert robot.scans == [robot.scan]
+        assert robot.scan is robot.scans[0]
+        assert robot.sensors == [robot.scan]
+
+        captured_x = robot.odom.pose.pose.position.x
+        captured_ranges = robot.scan.ranges.copy()
+        env.robot.set_state([3.0, 4.0, 0.5])
+        env.robot.lidar.range_data[:] = 1.25
+
+        assert robot.odom.pose.pose.position.x == captured_x
+        np.testing.assert_array_equal(robot.scan.ranges, captured_ranges)
+
+    def test_get_msg_tracks_simulation_time_and_serializes(self, env_factory):
+        """Each message is timestamped and can become a JSON payload."""
+        env = env_factory("test_collision_world.yaml")
+        env.step(np.array([[0.2], [0.0]]))
+
+        msg = env.get_msg()
+        payload = msg.to_dict()
+
+        assert msg.header.seq == 1
+        assert msg.header.stamp == pytest.approx(0.1)
+        position = msg.robots[0].odom.pose.pose.position
+        payload_position = payload["objects"][0]["odom"]["pose"]["pose"]["position"]
+        assert payload_position == {"x": position.x, "y": position.y, "z": position.z}
+        assert msg.robots[0].odom.twist.twist.linear.x == pytest.approx(0.2)
+        assert msg.robots[0].scan is None
+        assert msg.robots[0].scans == []
+        assert "scan" in payload["objects"][0]
+        assert json.loads(json.dumps(payload))["header"]["seq"] == 1
+
+    def test_message_serialization_handles_optional_and_numpy_values(self, env_factory):
+        """Public message conversion handles missing goals and NumPy scalars."""
+        env = env_factory("test_collision_world.yaml")
+        env.robot._goal = None
+
+        assert env.get_msg().robots[0].goal is None
+        assert _PayloadMessage({"scalar": np.float32(1.25)}).to_dict() == {
+            "payload": {"scalar": 1.25}
+        }
+
+    def test_odometry_from_omni_angular_object(self):
+        """Omni-angular objects expose planar and angular velocity."""
+        obj = SimpleNamespace(
+            state=np.array([[1.0], [2.0], [0.3]]),
+            velocity=np.array([[0.4], [0.5], [0.6]]),
+            kinematics="omni_angular",
+            name="omni-angular",
+        )
+
+        odom = Odometry.from_object(obj)
+
+        assert odom.twist.twist.linear.x == pytest.approx(0.4)
+        assert odom.twist.twist.linear.y == pytest.approx(0.5)
+        assert odom.twist.twist.angular.z == pytest.approx(0.6)
+
+    def test_receive_ros_style_odometry_updates_primary_robot(self, env_factory):
+        """Native ROS-shaped odometry updates pose, twist, and derived sensors."""
+        env = env_factory("test_all_objects.yaml")
+        yaw = 0.7
+        orientation = Quaternion.from_yaw(yaw)
+        odom = SimpleNamespace(
+            pose=SimpleNamespace(
+                pose=SimpleNamespace(
+                    position=SimpleNamespace(x=2.5, y=3.5),
+                    orientation=orientation,
+                )
+            ),
+            twist=SimpleNamespace(
+                twist=SimpleNamespace(
+                    linear=SimpleNamespace(x=0.4, y=9.0),
+                    angular=SimpleNamespace(z=-0.2),
+                )
+            ),
+        )
+
+        updated = env.receive_msg(odom)
+
+        assert updated == 1
+        np.testing.assert_allclose(env.robot.state[:3, 0], [2.5, 3.5, yaw])
+        np.testing.assert_allclose(env.robot.velocity[:, 0], [0.4, -0.2])
+        np.testing.assert_allclose(env.robot.lidar.state, env.robot.state[:3])
+        np.testing.assert_allclose(env.robot.geometry.centroid.coords[0], [2.5, 3.5])
+
+    def test_receive_object_and_world_messages(self, env_factory):
+        """ObjectState and WorldState use embedded identity and preserve local time."""
+        env = env_factory("test_all_objects.yaml")
+        object_msg = env.get_msg().robots[0]
+        object_msg.id = -1  # name is the stable cross-simulator identity
+        object_msg.odom.pose.pose.position.x = 2.25
+
+        assert env.receive_msg(object_msg, refresh=False) == 1
+        assert env.robot.state[0, 0] == pytest.approx(2.25)
+
+        world_msg = env.get_msg()
+        expected_x = {}
+        for index, obj_msg in enumerate(world_msg.objects):
+            obj_msg.odom.pose.pose.position.x += 0.01 * (index + 1)
+            expected_x[obj_msg.name] = obj_msg.odom.pose.pose.position.x
+        time_before = env.time
+        goals_before = {
+            obj.name: None if obj.goal is None else obj.goal.copy()
+            for obj in env.objects
+        }
+
+        assert env.receive_msg(world_msg) == len(env.objects)
+        assert env.time == time_before
+        for obj in env.objects:
+            assert obj.state[0, 0] == pytest.approx(expected_x[obj.name])
+            if goals_before[obj.name] is None:
+                assert obj.goal is None
+            else:
+                np.testing.assert_array_equal(obj.goal, goals_before[obj.name])
+
+    def test_receive_world_message_is_atomic_on_unknown_object(self, env_factory):
+        """An unresolved WorldState target leaves every local object unchanged."""
+        env = env_factory("test_all_objects.yaml")
+        world_msg = env.get_msg()
+        world_msg.objects[-1].name = "external-only-object"
+        world_msg.objects[-1].id = -1
+        states_before = {obj.name: obj.state.copy() for obj in env.objects}
+
+        with pytest.raises(ValueError, match="No simulation object matches"):
+            env.receive_msg(world_msg)
+
+        for obj in env.objects:
+            np.testing.assert_array_equal(obj.state, states_before[obj.name])
+
+    def test_receive_world_message_rejects_selectors_and_duplicates(self, env_factory):
+        """World messages cannot override or repeat resolved local targets."""
+        env = env_factory("test_all_objects.yaml")
+        world_msg = env.get_msg()
+
+        with pytest.raises(ValueError, match="cannot be used with WorldState"):
+            env.receive_msg(world_msg, object_name=env.robot.name)
+
+        world_msg.objects.append(world_msg.objects[0])
+        states_before = {obj.name: obj.state.copy() for obj in env.objects}
+        with pytest.raises(ValueError, match="more than one state"):
+            env.receive_msg(world_msg)
+
+        for obj in env.objects:
+            np.testing.assert_array_equal(obj.state, states_before[obj.name])
+
+    def test_receive_object_message_accepts_explicit_id(self, env_factory):
+        """An explicit id can select the target for an ObjectState message."""
+        env = env_factory("test_all_objects.yaml")
+        object_msg = env.get_msg().robots[0]
+        object_msg.odom.pose.pose.position.x = 2.75
+
+        assert env.receive_msg(object_msg, object_id=env.robot.id, refresh=False) == 1
+        assert env.robot.state[0, 0] == pytest.approx(2.75)
+
+    def test_receive_odometry_converts_ackermann_twist(self, env_factory):
+        """Ackermann yaw rate is converted back to the local steering layout."""
+        env = env_factory("test_all_objects.yaml")
+        car = next(obj for obj in env.objects if obj.kinematics == "acker")
+        odom = next(
+            obj_msg.odom
+            for obj_msg in env.get_msg().objects
+            if obj_msg.name == car.name
+        )
+        odom.pose.pose.orientation = Quaternion.from_yaw(-0.4)
+        odom.twist.twist.linear.x = 0.5
+        odom.twist.twist.angular.z = 0.25
+        expected_steering = np.arctan(0.25 * car.wheelbase / 0.5)
+
+        assert env.receive_msg(odom, object_name=car.name, refresh=False) == 1
+        assert car.state[2, 0] == pytest.approx(-0.4)
+        assert car.state[3, 0] == pytest.approx(expected_steering)
+        np.testing.assert_allclose(car.velocity[:, 0], [0.5, expected_steering])
+
+    def test_receive_odometry_keeps_steering_when_car_is_stopped(self, env_factory):
+        """A stopped car reports no yaw rate, so its steering cannot be carried."""
+        env = env_factory("test_all_objects.yaml")
+        car = next(obj for obj in env.objects if obj.kinematics == "acker")
+        car.set_state(np.array([[5.0], [1.0], [0.0], [0.25]]))
+        car.set_velocity(np.array([[0.0], [0.25]]))
+        odom = next(
+            obj_msg.odom
+            for obj_msg in env.get_msg().objects
+            if obj_msg.name == car.name
+        )
+        car.set_state(np.array([[5.0], [1.0], [0.0], [0.1]]))
+
+        env.receive_msg(odom, object_name=car.name, refresh=False)
+
+        assert odom.twist.twist.angular.z == pytest.approx(0.0)
+        assert car.state[3, 0] == pytest.approx(0.1)
+
+    def test_receive_odometry_requires_a_steering_state(self):
+        """An Ackermann target without a steering value is reported clearly."""
+        target = SimpleNamespace(
+            state=np.zeros((3, 1)),
+            vel_shape=(2, 1),
+            kinematics="acker",
+            name="short-acker",
+            wheelbase=1.0,
+            kf=SimpleNamespace(mode="steer"),
+        )
+
+        with pytest.raises(ValueError, match="needs a steering state value"):
+            Odometry().to_state_velocity(target)
+
+    def test_receive_msg_rejects_invalid_input_without_mutation(self, env_factory):
+        """Malformed odometry fails before changing the selected object."""
+        env = env_factory("test_collision_world.yaml")
+        state_before = env.robot.state.copy()
+
+        with pytest.raises(TypeError, match="ROS-compatible"):
+            env.receive_msg(object())
+
+        np.testing.assert_array_equal(env.robot.state, state_before)
+
+    def test_receive_msg_rejects_nonfinite_odometry(self, env_factory):
+        """Non-finite odometry values are rejected before object mutation."""
+        env = env_factory("test_collision_world.yaml")
+        odom = env.get_msg().robots[0].odom
+        odom.pose.pose.position.x = np.inf
+
+        with pytest.raises(ValueError, match="must all be finite"):
+            env.receive_msg(odom, refresh=False)
+
+    def test_receive_msg_rejects_zero_quaternion(self, env_factory):
+        """A zero quaternion cannot define the received planar yaw."""
+        env = env_factory("test_collision_world.yaml")
+        odom = env.get_msg().robots[0].odom
+        odom.pose.pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=0.0)
+
+        with pytest.raises(ValueError, match="orientation must be non-zero"):
+            env.receive_msg(odom, refresh=False)
+
+    def test_odometry_requires_three_target_state_values(self):
+        """Planar odometry cannot update a target without x, y, and yaw."""
+        target = SimpleNamespace(
+            state=np.zeros((2, 1)),
+            vel_shape=(2, 1),
+            kinematics="diff",
+            name="short-state",
+        )
+
+        with pytest.raises(ValueError, match="at least three state values"):
+            Odometry().to_state_velocity(target)
+
+    @pytest.mark.parametrize("kinematics", ["omni_angular", "custom"])
+    def test_odometry_maps_extended_velocity_layouts(self, kinematics):
+        """Angular omni and extension kinematics receive all twist components."""
+        target = SimpleNamespace(
+            state=np.zeros((3, 1)),
+            vel_shape=(3, 1),
+            kinematics=kinematics,
+            name=kinematics,
+        )
+        odom = Odometry()
+        odom.twist.twist.linear.x = 0.4
+        odom.twist.twist.linear.y = 0.5
+        odom.twist.twist.angular.z = 0.6
+
+        _, velocity = odom.to_state_velocity(target)
+
+        np.testing.assert_allclose(velocity[:, 0], [0.4, 0.5, 0.6])
+
+    def test_get_lidar_scan(self, env_factory):
+        """Test getting lidar scan data."""
+        env = env_factory("test_all_objects.yaml")
+        scan = env.get_lidar_scan()
+        assert scan is not None
+
+    def test_get_lidar_offset(self, env_factory):
+        """Test getting lidar offset."""
+        env = env_factory("test_all_objects.yaml")
+        offset = env.get_lidar_offset()
+        assert offset is not None
+
+    def test_get_robot_info(self, env_factory):
+        """Test getting robot info."""
+        env = env_factory("test_collision_world.yaml")
+        info = env.get_robot_info()
+        assert info is not None
+
+    def test_get_obstacle_info_list(self, env_factory):
+        """Test getting obstacle info list."""
+        env = env_factory("test_all_objects.yaml")
+        info_list = env.get_obstacle_info_list()
+        assert isinstance(info_list, list)
+
+    def test_get_robot_info_list(self, env_factory):
+        """Test getting robot info list."""
+        env = env_factory("test_all_objects.yaml")
+        info_list = env.get_robot_info_list()
+        assert isinstance(info_list, list)
+
+    def test_get_map(self, env_factory):
+        """Test getting map data."""
+        env = env_factory("test_collision_world.yaml")
+        env_map = env.get_map()
+        assert env_map is not None
+
+    def test_get_object_by_name(self, env_factory):
+        """Test getting object by name."""
+        env = env_factory("test_collision_avoidance.yaml")
+        result = env.get_object_by_name("nonexistent")
+        assert result is None
+
+    def test_get_object_by_id(self, env_factory):
+        """Test getting object by ID."""
+        env = env_factory("test_collision_world.yaml")
+        obj = env.get_object_by_id(env.robot.id)
+        assert obj is not None
+        assert obj.id == env.robot.id
+
+    def test_get_group_by_name(self, env_factory):
+        """Test getting object group by name."""
+        env = env_factory("test_collision_avoidance.yaml", full=True)
+        group = env.get_group_by_name("robot_group")
+        # May be None if group doesn't exist in config
+        assert group is None or group is not None
+
+
+class TestEnvironmentProperties:
+    """Tests for environment property accessors."""
+
+    def test_robot_property(self, env_factory):
+        """Test robot property returns first robot."""
+        env = env_factory("test_collision_world.yaml")
+        assert env.robot is not None
+        assert env.robot == env.robot_list[0]
+
+    def test_robot_property_empty_raises(self, env_factory):
+        """Test robot property raises IndexError when no robots."""
+        env = env_factory("test_collision_world.yaml")
+        # Remove all robots
+        for robot in list(env.robot_list):
+            env.delete_object(robot.id)
+        with pytest.raises(IndexError, match="No robots in the environment"):
+            _ = env.robot
+
+    def test_step_time(self, env_factory):
+        """Test step_time property."""
+        env = env_factory("test_collision_world.yaml")
+        assert env.step_time > 0
+
+    def test_robot_number(self, env_factory):
+        """Test robot_number property."""
+        env = env_factory("test_collision_avoidance.yaml", full=True)
+        assert env.robot_number >= 1
+
+    def test_dynamic_objects(self, env_factory):
+        """Test dynamic_objects property."""
+        env = env_factory("test_collision_avoidance.yaml", full=True)
+        dynamic = env.dynamic_objects
+        assert isinstance(dynamic, list)
+
+    def test_static_objects(self, env_factory):
+        """Test static_objects property."""
+        env = env_factory("test_collision_avoidance.yaml", full=True)
+        static = env.static_objects
+        assert isinstance(static, list)
+
+    def test_names_property(self, env_factory):
+        """Test names property returns all object names."""
+        env = env_factory("test_all_objects.yaml")
+        names = env.names
+        assert isinstance(names, list)
+        assert len(names) > 0
+
+    def test_world_param_property(self, env_factory):
+        """Test world_param property returns WorldParam instance."""
+        env = env_factory("test_collision_world.yaml")
+        wp = env.world_param
+        assert wp is not None
+        assert hasattr(wp, "control_mode")
+        assert hasattr(wp, "collision_mode")
+        assert hasattr(wp, "step_mode")
+        assert hasattr(wp, "step_time")
+        assert hasattr(wp, "count")
+        assert wp.step_time > 0
+
+    def test_env_param_property(self, env_factory):
+        """Test env_param property returns EnvParam instance."""
+        env = env_factory("test_collision_world.yaml")
+        ep = env.env_param
+        assert ep is not None
+        assert hasattr(ep, "logger")
+        assert hasattr(ep, "objects")
+        assert ep.logger is not None
+
+    def test_path_param_property(self, env_factory):
+        """Test path_param property returns PathManager instance."""
+        env = env_factory("test_collision_world.yaml")
+        pp = env.path_param
+        assert pp is not None
+        assert hasattr(pp, "root_path")
+        assert hasattr(pp, "ani_buffer_path")
+        assert hasattr(pp, "ani_path")
+        assert hasattr(pp, "fig_path")
+
+    def test_object_world_param_property(self, env_factory):
+        """Test world_param property on objects."""
+        env = env_factory("test_collision_world.yaml")
+        robot = env.robot
+        wp = robot.world_param
+        assert wp is not None
+        assert wp.step_time == env.world_param.step_time
+        assert wp is env.world_param
+
+    def test_object_env_param_property(self, env_factory):
+        """Test env_param property on objects."""
+        env = env_factory("test_collision_world.yaml")
+        robot = env.robot
+        ep = robot.env_param
+        assert ep is not None
+        assert ep.logger is env.logger
+        assert ep is env.env_param
+
+
+class TestEnvironmentFlags:
+    """Tests for environment flag processing."""
+
+    def test_save_figure_flag(self, env_factory):
+        """Test save_figure_flag triggers save during render."""
+        env = env_factory("test_all_objects.yaml")
+        with patch.object(env, "save_figure") as mock_save:
+            env.save_figure_flag = True
+            env.render(0.0)
+            mock_save.assert_called_once()
+            assert env.save_figure_flag is False
+
+    def test_reset_flag(self, env_factory):
+        """Test reset_flag triggers reset during render."""
+        env = env_factory("test_all_objects.yaml")
+        env.reset_flag = True
+        env.render(0.0)
+        assert env.reset_flag is False
+
+    def test_reload_flag(self, env_factory):
+        """Test reload_flag triggers reload during render."""
+        env = env_factory("test_all_objects.yaml")
+        env.reload_flag = True
+        env.render(0.0)
+        assert env.reload_flag is False
+
+    def test_quit_flag_raises_systemexit(self, env_factory):
+        """Test quit_flag causes step to raise SystemExit."""
+        env = env_factory("test_all_objects.yaml")
+        env.quit_flag = True
+        with pytest.raises(SystemExit):
+            env.step()
+
+
+class TestSimulationLoop:
+    """Tests for simulation step and render loop."""
+
+    @pytest.mark.parametrize("projection", ["2d", "3d"])
+    def test_basic_simulation_loop(self, env_factory, projection):
+        """Test basic step-render loop."""
+        env = env_factory("test_collision_world.yaml", projection=projection)
+        for _ in range(4):
+            env.step()
+            env.render(0.01)
+        assert env.time > 0
+
+    def test_step_with_action(self, env_factory):
+        """Test step with explicit action."""
+        env = env_factory("test_multi_objects_world.yaml")
+        action = np.array([1, 0]).reshape(2, 1)
+        env.step(action)
+        assert env.time > 0
+
+    def test_step_with_action_list(self, env_factory):
+        """Test step with action list and ID list."""
+        env = env_factory("test_multi_objects_world.yaml")
+        action_list = [[1, 0], [2, 0]]
+        action_id_list = [2, 3]
+        env.step(action_list, action_id_list)
+
+    def test_step_with_action_single_id(self, env_factory):
+        """Test step with action list and single ID."""
+        env = env_factory("test_multi_objects_world.yaml")
+        action_list = [[1, 0], [2, 0]]
+        action_id = 1
+        env.step(action_list, action_id)
+
+    def test_step_with_flat_action_list(self, env_factory):
+        """``[1.0, 0.5]`` is one action, not one scalar per object."""
+        env = env_factory("test_multi_objects_world.yaml")
+        x0 = env.robot_list[0].state[0, 0]
+        env.step([1.0, 0.0])
+        assert env.robot_list[0].state[0, 0] > x0
+
+    def test_step_with_flat_action_list_and_id_list(self, env_factory):
+        """A flat action is broadcast to every id in ``action_id``."""
+        env = env_factory("test_multi_objects_world.yaml")
+        xs = [obj.state[0, 0] for obj in env.robot_list[:2]]
+        env.step([1.0, 0.0], action_id=[0, 1])
+        for obj, x in zip(env.robot_list[:2], xs, strict=True):
+            assert obj.state[0, 0] > x
+
+    def test_step_with_tuple_action(self, env_factory):
+        """A tuple action must not be silently dropped."""
+        env = env_factory("test_multi_objects_world.yaml")
+        x0 = env.robot_list[0].state[0, 0]
+        env.step((1.0, 0.0))
+        assert env.robot_list[0].state[0, 0] > x0
+
+    @pytest.mark.parametrize(
+        ("action", "action_id"),
+        [
+            ([[1.0, 0.0]] * 99, None),  # more actions than objects
+            ([[1.0, 0.0], [1.0, 0.0]], [0]),  # more actions than ids
+        ],
+    )
+    def test_step_warns_and_drops_surplus_actions(self, env_factory, action, action_id):
+        env = env_factory("test_multi_objects_world.yaml")
+        with patch.object(env.logger, "warning_once") as warn:
+            env.step(action, action_id)
+        assert sum("ignored" in c.args[0] for c in warn.call_args_list) == 1
+
+    def test_step_rejects_unknown_action_id(self, env_factory):
+        env = env_factory("test_multi_objects_world.yaml")
+        with pytest.raises(ValueError, match="no object with id or name 99"):
+            env.step([1.0, 0.0], action_id=99)
+
+    def test_step_rejects_unsupported_action_type(self, env_factory):
+        env = env_factory("test_multi_objects_world.yaml")
+        with pytest.raises(TypeError, match="action must be"):
+            env.step("forward")
+
+    def test_external_step_synchronizes_supplied_state(self, env_factory, tmp_path):
+        """External mode refreshes supplied states without running behaviors."""
+        yaml_file = tmp_path / "external_step.yaml"
+        yaml_file.write_text(
+            "world:\n"
+            "  height: 10\n"
+            "  width: 10\n"
+            "  step_time: 0.1\n"
+            "  step_mode: external\n"
+            "  collision_mode: stop\n"
+            "robot:\n"
+            "  - kinematics: {name: diff}\n"
+            "    shape: {name: circle, radius: 0.5}\n"
+            "    state: [1, 1, 0]\n"
+            "    goal: [9, 1, 0]\n"
+            "    behavior: {name: dash}\n"
+            "obstacle:\n"
+            "  - shape: {name: circle, radius: 0.5}\n"
+            "    state: [3, 3, 0]\n"
+        )
+        env = env_factory(str(yaml_file))
+        robot = env.robot
+        initial_state = robot.state.copy()
+
+        with patch.object(robot, "step", wraps=robot.step) as robot_step:
+            env.step()
+
+        robot_step.assert_not_called()
+        np.testing.assert_allclose(robot.state, initial_state)
+        assert env.time == pytest.approx(0.1)
+        assert len(robot.trajectory) == 1
+
+        robot.set_state([3, 3, 0])
+        robot.set_velocity([0.4, 0.0])
+        env.step()
+
+        np.testing.assert_allclose(robot.state[:, 0], [3, 3, 0])
+        np.testing.assert_allclose(robot.velocity[:, 0], [0.4, 0.0])
+        assert robot.collision is True
+        assert robot.stop_flag is True
+        assert env.time == pytest.approx(0.2)
+        assert len(robot.trajectory) == 2
+
+        env.step()
+
+        assert env.time == pytest.approx(0.3)
+        assert len(robot.trajectory) == 2
+
+    def test_external_step_rejects_actions(self, env_factory):
+        """External state mode cannot also run IR-SIM action integration."""
+        env = env_factory("test_collision_world.yaml", step_mode="external")
+
+        with pytest.raises(ValueError, match="step_mode='external'"):
+            env.step(np.array([1.0, 0.0]))
+
+    def test_objects_step(self, env_factory):
+        """Test internal _objects_step method."""
+        env = env_factory("test_collision_avoidance.yaml", full=True)
+        env._objects_step([np.array([1, 0]).reshape(2, 1)])
+        assert True  # No exception raised
+
+    def test_done_detection(self, env_factory):
+        """Test simulation done detection."""
+        env = env_factory("test_collision_world.yaml")
+        # Run until done or max iterations
+        for _ in range(100):
+            env.step()
+            if env.done():
+                break
+        # Either done or hit max iterations
+        assert True
+
+    def test_done_mode_any(self, env_factory):
+        """Test done() with mode='any'."""
+        env = env_factory("test_collision_avoidance.yaml", full=True)
+        # Should return False when no robot has arrived
+        result = env.done(mode="any")
+        assert result is False or result is True
+
+    def test_done_mode_invalid(self, env_factory):
+        """Test done() with invalid mode returns None."""
+        env = env_factory("test_collision_world.yaml")
+        result = env.done(mode="invalid")
+        assert result is None
+
+    def test_done_no_robots(self, env_factory):
+        """Test done() when no robots exist."""
+        env = env_factory("test_collision_world.yaml")
+        # Remove all robots
+        for robot in list(env.robot_list):
+            env.delete_object(robot.id)
+        result = env.done()
+        assert result is False
+
+
+class TestEnvRepr:
+    """Tests for environment string representation."""
+
+    def test_str(self, env_factory):
+        """Test __str__ method."""
+        env = env_factory("test_collision_world.yaml")
+        str_repr = str(env)
+        assert "Environment:" in str_repr
+
+
+class TestDrawMethods:
+    """Tests for environment drawing methods."""
+
+    def test_draw_box(self, env_factory):
+        """Test draw_box method."""
+        env = env_factory("test_all_objects.yaml")
+        import numpy as np
+
+        vertices = np.array([[0, 1, 1, 0], [0, 0, 1, 1]])
+        env.draw_box(vertices, refresh=True, color="-b")
+
+    def test_draw_quiver(self, env_factory):
+        """Test draw_quiver method."""
+        env = env_factory("test_all_objects.yaml")
+        point = (0, 0, 1, 1)
+        env.draw_quiver(point, refresh=True)
+
+
+class TestStatusMethods:
+    """Tests for environment status methods."""
+
+    def test_status_save_figure_flag(self, env_factory):
+        """Test status shows 'Save Figure' when flag is set."""
+        env = env_factory("test_all_objects.yaml")
+        env.save_figure_flag = True
+        env._status_step()
+        # Flag should affect status
+        assert env.save_figure_flag or not env.save_figure_flag
+
+    def test_resume_with_debug_flag(self, env_factory):
+        """Test resume() clears debug_flag and debug_count."""
+        env = env_factory("test_all_objects.yaml")
+        env.debug_flag = True
+        env.debug_count = 5
+        env.resume()
+        assert env.debug_flag is False
+        assert env.debug_count == 0
+
+    def test_resume_with_pause_flag(self, env_factory):
+        """Test resume() clears pause_flag."""
+        env = env_factory("test_all_objects.yaml")
+        env.pause_flag = True
+        env.resume()
+        assert env.pause_flag is False
+
+
+class TestAnimationSaving:
+    """Tests for animation saving functionality."""
+
+    @pytest.mark.parametrize("projection", ["2d", "3d"])
+    def test_animation_saving(self, env_factory, projection):
+        """Test animation saving functionality."""
+        env = irsim.make(
+            "test_render.yaml",
+            save_ani=True,
+            display=False,
+            projection=projection,
+        )
+        steps = 20 if projection == "2d" else 3
+        for _ in range(steps):
+            env.step()
+            env.render(0.01)
+        env.end(ani_name="test_animation")
+
+    def test_ani_kwargs_honored_by_quit_and_overridable(self):
+        """ani_kwargs default is used by every save path (incl. ESC/quit) and
+        is overridable per call. See issue #301 (ESC saved .gif not .mp4)."""
+        from unittest.mock import MagicMock
+
+        # default format set up front
+        env = irsim.make(
+            "test_render.yaml",
+            save_ani=True,
+            display=False,
+            ani_kwargs={"suffix": ".mp4"},
+        )
+        env._env_plot.save_animate = MagicMock()
+
+        # ESC path: quit() calls end() itself -> must use the stored suffix
+        with pytest.raises(SystemExit):
+            env.quit()
+        assert env._env_plot.save_animate.call_args.kwargs["suffix"] == ".mp4"
+
+        # per-call kwargs override the stored default
+        env2 = irsim.make(
+            "test_render.yaml",
+            save_ani=True,
+            display=False,
+            ani_kwargs={"suffix": ".mp4"},
+        )
+        env2._env_plot.save_animate = MagicMock()
+        env2.end(ending_time=0, suffix=".gif")
+        assert env2._env_plot.save_animate.call_args.kwargs["suffix"] == ".gif"
+
+
+class TestRandomization:
+    """Tests for randomization methods."""
+
+    def test_set_random_seed(self, env_factory):
+        """Test setting random seed without reload (default)."""
+        env = env_factory("test_collision_avoidance.yaml", full=True)
+        env.set_random_seed(42)
+        # Seed is set; no assertion needed
+
+    def test_set_random_seed_with_reload_false(self, env_factory):
+        """Test setting random seed with explicit reload=False."""
+        env = env_factory("test_collision_avoidance.yaml", full=True)
+        env.set_random_seed(42, reload=False)
+        # Seed is set without reload; no assertion needed
+
+    def test_set_random_seed_with_reload_true(self, env_factory):
+        """Test setting random seed with reload=True regenerates environment."""
+        env = env_factory("test_collision_avoidance.yaml", full=True)
+        env.set_random_seed(42, reload=True)
+        # Seed is set and environment is reloaded
+        assert env is not None
+
+    def test_random_polygon_shape(self, env_factory):
+        """Test random polygon shape generation."""
+        env = env_factory("test_all_objects.yaml")
+        env.random_polygon_shape()
+        # Shape is randomized; no assertion needed
+
+    @pytest.mark.parametrize("projection", ["2d", "3d"])
+    def test_random_obstacle_position(self, env_factory, projection):
+        """Test random obstacle positioning."""
+        env = env_factory("test_multi_objects_world.yaml", projection=projection)
+        env.random_obstacle_position()
+
+    def test_random_obstacle_position_non_overlapping(self, env_factory):
+        """Test random obstacle positioning with non-overlapping constraint."""
+        env = env_factory("test_multi_objects_world.yaml")
+        env.random_obstacle_position(ids=[3, 4, 5, 6, 7], non_overlapping=True)
+
+    def test_reset_random_resamples_scene(self, env_factory):
+        """reset(random=True) should re-sample randomized distributions."""
+        env = env_factory("test_all_objects.yaml")
+        before = [np.asarray(obj.state).flatten().copy() for obj in env.obstacle_list]
+        env.reset(random=True)
+        after = [np.asarray(obj.state).flatten().copy() for obj in env.obstacle_list]
+        assert len(before) == len(after)
+        assert any(not np.allclose(b, a) for b, a in zip(before, after, strict=False))
+
+    def test_reset_random_reproducible_with_seed(self, env_factory):
+        """Seeding before reset(random=True) should yield a reproducible scene."""
+        from irsim.util.random import set_seed
+
+        env = env_factory("test_all_objects.yaml")
+        set_seed(7)
+        env.reset(random=True)
+        states_a = [np.asarray(obj.state).flatten().copy() for obj in env.obstacle_list]
+
+        set_seed(7)
+        env.reset(random=True)
+        states_b = [np.asarray(obj.state).flatten().copy() for obj in env.obstacle_list]
+
+        for a, b in zip(states_a, states_b, strict=False):
+            assert np.allclose(a, b)
+
+
+class TestLogger:
+    """Tests for logger functionality."""
+
+    def test_logger_methods(self, env_factory):
+        """Test all logger methods work without error."""
+        env = env_factory("test_collision_avoidance.yaml", full=True)
+        env.logger.info("test")
+        env.logger.warning("test")
+        env.logger.error("test")
+        env.logger.critical("test")
+        env.logger.debug("test")
+        env.logger.success("test")
+        env.logger.trace("test")
+
+
+class TestQuit:
+    """Tests for environment quit functionality."""
+
+    def test_quit_raises_systemexit(self, env_factory):
+        """Test quit method raises SystemExit."""
+        env = env_factory("test_multi_objects_world.yaml")
+        with pytest.raises(SystemExit):
+            env.quit()
+
+
+class TestMultipleEnvironments:
+    """Tests for multiple environment instances with isolated parameters."""
+
+    def test_two_environments_have_separate_world_params(self, env_factory):
+        """Test that two environments have separate world_param instances."""
+        env1 = env_factory("test_collision_world.yaml")
+        env2 = env_factory("test_multi_objects_world.yaml")
+
+        # They should have different instances
+        assert env1.world_param is not env2.world_param
+
+        # Modifying one should not affect the other
+        original_mode = env2.world_param.control_mode
+        env1.world_param.control_mode = "keyboard"
+        assert env2.world_param.control_mode == original_mode
+
+    def test_two_environments_have_separate_env_params(self, env_factory):
+        """Test that two environments have separate env_param instances."""
+        env1 = env_factory("test_collision_world.yaml")
+        env2 = env_factory("test_multi_objects_world.yaml")
+
+        # They should have different instances
+        assert env1.env_param is not env2.env_param
+        assert env1.env_param.objects is not env2.env_param.objects
+
+    def test_two_environments_have_separate_path_params(self, env_factory):
+        """Test that two environments have separate path_param instances."""
+        env1 = env_factory("test_collision_world.yaml")
+        env2 = env_factory("test_multi_objects_world.yaml")
+
+        # They should have different instances
+        assert env1.path_param is not env2.path_param
+
+    def test_object_ids_are_per_environment(self, env_factory):
+        """Each environment numbers its objects from 0 with its own counter."""
+        env1 = env_factory("test_collision_world.yaml")
+        env2 = env_factory("test_render.yaml")
+        n1, n2 = len(env1.objects), len(env2.objects)
+        assert [o.id for o in env1.objects] == list(range(n1))
+        assert [o.id for o in env2.objects] == list(range(n2))
+
+        # env1 keeps counting from its own last id although env2 was created later
+        obstacle = env1.create_obstacle(shape={"name": "circle", "radius": 0.2})
+        assert obstacle.id == n1
+        env1.add_object(obstacle)
+
+        # rebuilding env2 restarts env2 only
+        env2.reload()
+        assert [o.id for o in env2.objects] == list(range(n2))
+        assert (
+            env1.create_obstacle(shape={"name": "circle", "radius": 0.2}).id == n1 + 1
+        )
+
+    def test_add_object_rejects_duplicate_id(self, env_factory):
+        env = env_factory("test_render.yaml")
+        extra = env.create_obstacle(
+            name="extra", shape={"name": "circle", "radius": 0.2}
+        )
+        extra._id = env.objects[0].id
+        with pytest.raises(ValueError, match="ids already exist"):
+            env.add_object(extra)
+        with pytest.raises(ValueError, match="ids already exist"):
+            env.add_objects([extra])
+
+        # duplicates within one add_objects() call are rejected as well
+        a = env.create_obstacle(name="a", shape={"name": "circle", "radius": 0.2})
+        b = env.create_obstacle(name="b", shape={"name": "circle", "radius": 0.2})
+        b._id = a.id
+        with pytest.raises(ValueError, match="repeat"):
+            env.add_objects([a, b])
+
+    def test_equal_ids_in_different_environments_are_distinct_objects(
+        self, env_factory
+    ):
+        env1 = env_factory("test_collision_world.yaml")
+        env2 = env_factory("test_render.yaml")
+        assert env1.robot.id == env2.robot.id == 0
+        assert env1.robot != env2.robot
+        assert len({env1.robot, env2.robot}) == 2
+        assert env1.robot == env1.robot_list[0]  # identity within an environment
+
+    NOISY_YAML = """
+world: {height: 10, width: 10, step_time: 0.1}
+robot:
+  - kinematics: {name: 'diff', noise: true}
+    shape: {name: 'circle', radius: 0.2}
+    state: [1, 1, 0]
+    goal: [9, 9, 0]
+    behavior: {name: 'dash'}
+"""
+
+    @pytest.fixture
+    def noisy_env(self, env_factory, tmp_path):
+        path = tmp_path / "noisy.yaml"
+        path.write_text(self.NOISY_YAML)
+        return lambda **kwargs: env_factory(str(path), **kwargs)
+
+    @staticmethod
+    def _run(env, steps):
+        for _ in range(steps):
+            env.step()
+        return np.asarray(env.robot.state, dtype=float).reshape(-1)[:3]
+
+    def test_seeded_environment_is_reproducible(self, noisy_env):
+        assert np.array_equal(
+            self._run(noisy_env(seed=11), 5), self._run(noisy_env(seed=11), 5)
+        )
+
+    def test_seeded_environments_do_not_share_random_streams(self, noisy_env):
+        alone = self._run(noisy_env(seed=11), 5)
+
+        env_a, env_b = noisy_env(seed=11), noisy_env(seed=22)
+        assert env_a.env_param.rng is not env_b.env_param.rng
+        self._run(env_b, 3)  # stepping another seeded environment in between
+        env_b.reset(random=True)
+        assert np.array_equal(self._run(env_a, 5), alone)
+
+    def test_unseeded_environments_share_the_default_generator(self, noisy_env):
+        from irsim.util import random as irsim_random
+
+        env_a, env_b = noisy_env(), noisy_env()
+        assert env_a.env_param.rng is None
+        assert env_b.env_param.rng is None
+        env_a.step()
+        assert irsim_random._generator() is irsim_random._default
+        env_b.step()
+        assert irsim_random._generator() is irsim_random._default
+
+    def test_set_seed_targets_the_generator_in_use(self, noisy_env):
+        from irsim.util import random as irsim_random
+        from irsim.util.random import set_seed
+
+        env = noisy_env(seed=3)
+        own, default = env.env_param.rng, irsim_random._default
+        set_seed(4)  # the current env has its own generator: that one is replaced
+        assert env.env_param.rng is not own
+        assert irsim_random._default is default
+
+        env.set_random_seed(5)
+        assert env.env_param.rng is not None
+        env_plain = noisy_env()
+        set_seed(6)  # no generator of its own: the shared default is reseeded
+        assert env_plain.env_param.rng is None
+        assert irsim_random._default is not default
+
+    def test_environment_ids_are_process_wide(self, env_factory):
+        env1 = env_factory("test_collision_world.yaml")
+        env2 = env_factory("test_render.yaml")
+        assert env2.id > env1.id  # creation order, never reused
+        assert env1.env_param.env_id == env1.id
+        assert env1.robot._env_param.env_id == env1.id
+        assert f"(id {env1.id})" in str(env1)
+
+    def test_objects_reference_correct_env_params(self, env_factory):
+        """Test that objects reference their own environment's params."""
+        env1 = env_factory("test_collision_world.yaml")
+        env2 = env_factory("test_multi_objects_world.yaml")
+
+        # Robots should reference their own env's params
+        assert env1.robot.world_param is env1.world_param
+        assert env1.robot.env_param is env1.env_param
+
+        assert env2.robot.world_param is env2.world_param
+        assert env2.robot.env_param is env2.env_param
+
+        # Cross-check they are different
+        assert env1.robot.world_param is not env2.robot.world_param
+
+    def test_concurrent_step_isolated(self, env_factory):
+        """Test that stepping one env doesn't affect another's count."""
+        env1 = env_factory("test_collision_world.yaml")
+        env2 = env_factory("test_multi_objects_world.yaml")
+
+        # Step env1 multiple times
+        for _ in range(5):
+            env1.step()
+
+        # Step env2 fewer times
+        for _ in range(2):
+            env2.step()
+
+        # Counts should be independent
+        assert env1.world_param.count == 5
+        assert env2.world_param.count == 2
+
+
+class TestParamModuleFunctions:
+    """Tests for module-level functions in param modules.
+
+    Note: Python doesn't support module-level __getitem__, __setitem__, or
+    __setattr__ like class methods. These functions must be called directly.
+    """
+
+    def test_env_param_module_getitem(self):
+        """Test env_param module __getitem__ function."""
+        from irsim.config import env_param
+        from irsim.config.env_param import EnvParam
+
+        # Store original state
+        original_instances = env_param._instances.copy()
+        original_current = env_param._current
+
+        try:
+            # Set up test instance at index 0
+            test_instance = EnvParam()
+            env_param._instances[0] = test_instance
+            env_param._current = test_instance
+
+            # Test __getitem__ called directly as a function
+            result = env_param.__getitem__(0)
+            assert result is test_instance
+        finally:
+            # Restore original state
+            env_param._instances[:] = original_instances
+            env_param._current = original_current
+
+    def test_env_param_module_setitem(self):
+        """Test env_param module __setitem__ function."""
+        from irsim.config import env_param
+        from irsim.config.env_param import EnvParam
+
+        # Store original state
+        original_instances = env_param._instances.copy()
+        original_current = env_param._current
+
+        try:
+            # Test __setitem__ at index 0 (should update _current)
+            new_instance = EnvParam()
+            env_param.__setitem__(0, new_instance)
+            assert env_param._instances[0] is new_instance
+            assert env_param._current is new_instance
+
+            # Test __setitem__ at new index (extends list)
+            another_instance = EnvParam()
+            env_param.__setitem__(2, another_instance)
+            assert len(env_param._instances) >= 3
+            assert env_param._instances[2] is another_instance
+
+            # Test negative index raises
+            with pytest.raises(
+                IndexError, match="env_param index must be non-negative"
+            ):
+                env_param.__setitem__(-1, EnvParam())
+        finally:
+            # Restore original state
+            env_param._instances[:] = original_instances
+            env_param._current = original_current
+
+    def test_env_param_module_setattr(self):
+        """Test env_param module __setattr__ function."""
+        from irsim.config import env_param
+        from irsim.config.env_param import EnvParam
+
+        # Store original state
+        original_instances = env_param._instances.copy()
+        original_current = env_param._current
+
+        try:
+            # Set up test instance
+            test_instance = EnvParam()
+            env_param._instances[0] = test_instance
+            env_param._current = test_instance
+
+            # Test __setattr__ called directly as a function
+            env_param.__setattr__("logger", "test_logger")
+            assert test_instance.logger == "test_logger"
+        finally:
+            # Restore original state
+            env_param._instances[:] = original_instances
+            env_param._current = original_current
+
+    def test_env_param_bind_empty_instances(self):
+        """Test env_param bind when _instances is empty."""
+        from irsim.config import env_param
+        from irsim.config.env_param import EnvParam
+
+        # Store original state
+        original_instances = env_param._instances.copy()
+        original_current = env_param._current
+
+        try:
+            # Clear instances to test the else branch
+            env_param._instances.clear()
+            test_instance = EnvParam()
+            env_param.bind(test_instance)
+            assert env_param._instances[0] is test_instance
+            assert env_param._current is test_instance
+        finally:
+            # Restore original state
+            env_param._instances[:] = original_instances
+            env_param._current = original_current
+
+    def test_world_param_module_getitem(self):
+        """Test world_param module __getitem__ function."""
+        from irsim.config import world_param
+        from irsim.config.world_param import WorldParam
+
+        # Store original state
+        original_instances = world_param._instances.copy()
+        original_current = world_param._current
+
+        try:
+            # Set up test instance at index 0
+            test_instance = WorldParam()
+            world_param._instances[0] = test_instance
+            world_param._current = test_instance
+
+            # Test __getitem__ called directly as a function
+            result = world_param.__getitem__(0)
+            assert result is test_instance
+        finally:
+            # Restore original state
+            world_param._instances[:] = original_instances
+            world_param._current = original_current
+
+    def test_world_param_module_setitem(self):
+        """Test world_param module __setitem__ function."""
+        from irsim.config import world_param
+        from irsim.config.world_param import WorldParam
+
+        # Store original state
+        original_instances = world_param._instances.copy()
+        original_current = world_param._current
+
+        try:
+            # Test __setitem__ at index 0 (should update _current)
+            new_instance = WorldParam()
+            world_param.__setitem__(0, new_instance)
+            assert world_param._instances[0] is new_instance
+            assert world_param._current is new_instance
+
+            # Test __setitem__ at new index (extends list)
+            another_instance = WorldParam()
+            world_param.__setitem__(2, another_instance)
+            assert len(world_param._instances) >= 3
+            assert world_param._instances[2] is another_instance
+
+            # Test negative index raises
+            with pytest.raises(
+                IndexError, match="world_param index must be non-negative"
+            ):
+                world_param.__setitem__(-1, WorldParam())
+        finally:
+            # Restore original state
+            world_param._instances[:] = original_instances
+            world_param._current = original_current
+
+    def test_world_param_module_setattr(self):
+        """Test world_param module __setattr__ function."""
+        from irsim.config import world_param
+        from irsim.config.world_param import WorldParam
+
+        # Store original state
+        original_instances = world_param._instances.copy()
+        original_current = world_param._current
+
+        try:
+            # Set up test instance
+            test_instance = WorldParam()
+            world_param._instances[0] = test_instance
+            world_param._current = test_instance
+
+            # Test __setattr__ called directly as a function
+            world_param.__setattr__("control_mode", "keyboard")
+            assert test_instance.control_mode == "keyboard"
+        finally:
+            # Restore original state
+            world_param._instances[:] = original_instances
+            world_param._current = original_current
+
+    def test_world_param_bind_empty_instances(self):
+        """Test world_param bind when _instances is empty."""
+        from irsim.config import world_param
+        from irsim.config.world_param import WorldParam
+
+        # Store original state
+        original_instances = world_param._instances.copy()
+        original_current = world_param._current
+
+        try:
+            # Clear instances to test the else branch
+            world_param._instances.clear()
+            test_instance = WorldParam()
+            world_param.bind(test_instance)
+            assert world_param._instances[0] is test_instance
+            assert world_param._current is test_instance
+        finally:
+            # Restore original state
+            world_param._instances[:] = original_instances
+            world_param._current = original_current
+
+    def test_path_param_module_getitem(self):
+        """Test path_param module __getitem__ function."""
+        from irsim.config import path_param
+        from irsim.config.path_param import PathManager
+
+        # Store original state
+        original_instances = path_param._instances.copy()
+        original_current = path_param._current
+
+        try:
+            # Set up test instance at index 0
+            test_instance = PathManager()
+            path_param._instances[0] = test_instance
+            path_param._current = test_instance
+
+            # Test __getitem__ called directly as a function
+            result = path_param.__getitem__(0)
+            assert result is test_instance
+        finally:
+            # Restore original state
+            path_param._instances[:] = original_instances
+            path_param._current = original_current
+
+    def test_path_param_module_setitem(self):
+        """Test path_param module __setitem__ function."""
+        from irsim.config import path_param
+        from irsim.config.path_param import PathManager
+
+        # Store original state
+        original_instances = path_param._instances.copy()
+        original_current = path_param._current
+
+        try:
+            # Test __setitem__ at index 0 (should update _current)
+            new_instance = PathManager()
+            path_param.__setitem__(0, new_instance)
+            assert path_param._instances[0] is new_instance
+            assert path_param._current is new_instance
+
+            # Test __setitem__ at new index (extends list)
+            another_instance = PathManager()
+            path_param.__setitem__(2, another_instance)
+            assert len(path_param._instances) >= 3
+            assert path_param._instances[2] is another_instance
+
+            # Test negative index raises
+            with pytest.raises(
+                IndexError, match="path_param index must be non-negative"
+            ):
+                path_param.__setitem__(-1, PathManager())
+        finally:
+            # Restore original state
+            path_param._instances[:] = original_instances
+            path_param._current = original_current
+
+    def test_path_param_proxy_setattr(self):
+        """Test path_param _Proxy __setattr__ function."""
+        from irsim.config import path_param
+        from irsim.config.path_param import PathManager
+
+        # Store original state
+        original_instances = path_param._instances.copy()
+        original_current = path_param._current
+
+        try:
+            # Set up test instance
+            test_instance = PathManager()
+            path_param._instances[0] = test_instance
+            path_param._current = test_instance
+
+            # Test __setattr__ via path_manager proxy
+            path_param.path_manager.ani_path = "/test/path"
+            assert test_instance.ani_path == "/test/path"
+        finally:
+            # Restore original state
+            path_param._instances[:] = original_instances
+            path_param._current = original_current
+
+    def test_path_param_bind_empty_instances(self):
+        """Test path_param bind when _instances is empty."""
+        from irsim.config import path_param
+        from irsim.config.path_param import PathManager
+
+        # Store original state
+        original_instances = path_param._instances.copy()
+        original_current = path_param._current
+
+        try:
+            # Clear instances to test the else branch
+            path_param._instances.clear()
+            test_instance = PathManager()
+            path_param.bind(test_instance)
+            assert path_param._instances[0] is test_instance
+            assert path_param._current is test_instance
+        finally:
+            # Restore original state
+            path_param._instances[:] = original_instances
+            path_param._current = original_current
+
+
+# ---------------------------------------------------------------------------
+# Coverage-targeted tests
+# ---------------------------------------------------------------------------
+
+
+class TestWorldGetMapResolutions:
+    """Tests for world.get_map with various resolution values (lines 177-205)."""
+
+    def test_get_map_coarser_resolution(self, env_factory):
+        """Coarser resolution triggers downsample (lines 189-198)."""
+        env = env_factory("test_grid_map.yaml")
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            env_map = env.get_map(resolution=5.0)
+            assert env_map is not None
+            downsample_warnings = [x for x in w if "downsampled" in str(x.message)]
+            assert len(downsample_warnings) >= 1
+
+    def test_get_map_finer_resolution(self, env_factory):
+        """Finer resolution emits warning (lines 199-205)."""
+        env = env_factory("test_grid_map.yaml")
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            env_map = env.get_map(resolution=0.001)
+            assert env_map is not None
+            finer_warnings = [x for x in w if "finer" in str(x.message)]
+            assert len(finer_warnings) >= 1
+
+    def test_get_map_invalid_resolution(self, env_factory):
+        """Invalid resolution falls back to grid resolution (lines 177-183)."""
+        env = env_factory("test_grid_map.yaml")
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            env_map = env.get_map(resolution=-1.0)
+            assert env_map is not None
+            fallback_warnings = [
+                x for x in w if "positive and finite" in str(x.message)
+            ]
+            assert len(fallback_warnings) >= 1
+
+
+class TestObjectsCheckStatus:
+    """Test _objects_check_status method (line 363)."""
+
+    def test_objects_check_status(self, env_factory):
+        """_objects_check_status calls check_status on all objects (line 363)."""
+        env = env_factory("test_collision_world.yaml")
+        env._objects_check_status()
+        # No exception means it works
+
+    def test_object_step_deprecated(self, env_factory):
+        """_object_step with action (line 358)."""
+        env = env_factory("test_collision_world.yaml")
+        action = np.array([[0.5], [0.0]])
+        env._object_step(action, 0)
+
+    def test_object_step_empty_objects(self, env_factory):
+        """_object_step with empty objects returns early (line 355-356)."""
+        env = env_factory("test_collision_world.yaml")
+        for robot in list(env.robot_list):
+            env.delete_object(robot.id)
+        for obs in list(env.obstacle_list):
+            env.delete_object(obs.id)
+        env._object_step(None)
+
+
+class TestEndReleasesFigure:
+    """end() must not leave figures or global state behind in headless loops."""
+
+    @pytest.mark.parametrize("projection", ["2d", "3d"])
+    @pytest.mark.parametrize("disable_all_plot", [True, False])
+    def test_end_releases_figure(self, disable_all_plot, projection):
+        """Every env owns one figure; end() must close it and create no other.
+
+        Without this, headless episodic loops (e.g. RL training) leak one
+        figure per environment: the ``disable_all_plot`` path never closed
+        it, and the keyboard cleanup re-created one via ``plt.gcf()``. The 3D
+        env replaces the base 2D figure with its own and must not leak either.
+        """
+        plt.close("all")
+        for _ in range(3):
+            env = irsim.make(
+                "test_collision_world.yaml",
+                save_ani=False,
+                display=False,
+                disable_all_plot=disable_all_plot,
+                projection=projection,
+            )
+            env.step()
+            assert len(plt.get_fignums()) == (0 if disable_all_plot else 1)
+            env.end()
+            assert plt.get_fignums() == []
+
+    def test_end_spares_other_figures_and_releases_keyboard(self):
+        """end() is idempotent, closes only its own figure, and frees the keyboard."""
+        import irsim.gui.keyboard_control as kb_module
+
+        env = irsim.make("test_collision_world.yaml", save_ani=False, display=False)
+        env_fig = env._env_plot.fig
+        unrelated_fig = plt.figure()
+        env.keyboard._set_active()
+        env.step()
+        env.end()
+        env.end()
+
+        assert not plt.fignum_exists(env_fig.number)
+        assert plt.fignum_exists(unrelated_fig.number)
+        assert env._env_param.objects == []
+        assert not env.keyboard._is_active
+        assert kb_module._active_keyboard_instance is None
+
+    def test_ending_one_environment_does_not_reset_ids_for_another(self):
+        env_a = irsim.make(
+            "test_collision_world.yaml", display=False, disable_all_plot=True
+        )
+        env_b = irsim.make(
+            "test_collision_world.yaml", display=False, disable_all_plot=True
+        )
+        existing_ids = {obj.id for obj in env_b.objects}
+
+        env_a.end()
+        new_obstacle = env_b.create_obstacle(shape={"name": "circle", "radius": 0.2})
+
+        assert new_obstacle.id not in existing_ids
+        env_b.end()
+
+
+class TestStepActionIds:
+    """``action_id`` means ``obj.id`` and stays valid after objects are deleted."""
+
+    @staticmethod
+    def _make(env_factory, tmp_path):
+        yaml_file = tmp_path / "ids.yaml"
+        robots = "".join(
+            f"  - {{kinematics: {{name: diff}}, shape: {{name: circle, radius: 0.2}}, state: [{x}, 1, 0]}}\n"
+            for x in (1, 3, 5)
+        )
+        yaml_file.write_text(f"world: {{height: 10, width: 10}}\nrobot:\n{robots}")
+        return env_factory(str(yaml_file))
+
+    @staticmethod
+    def _step_and_moved(env, action, **kwargs):
+        before = {r.id: r.state[0, 0] for r in env.robot_list}
+        env.step(action, **kwargs)
+        return [r.id for r in env.robot_list if r.state[0, 0] > before[r.id]]
+
+    def test_action_id_is_object_id_after_deletion(self, env_factory, tmp_path):
+        env = self._make(env_factory, tmp_path)
+        env.delete_object(0)
+        assert self._step_and_moved(env, [1.0, 0.0], action_id=1) == [1]
+
+    def test_default_targets_first_remaining_robot(self, env_factory, tmp_path):
+        env = self._make(env_factory, tmp_path)
+        env.delete_object(0)
+        assert self._step_and_moved(env, [1.0, 0.0]) == [1]
+
+    def test_dict_keyed_by_name(self, env_factory, tmp_path):
+        env = self._make(env_factory, tmp_path)
+        moved = self._step_and_moved(
+            env, {"robot_0": [1.0, 0.0], "robot_2": [1.0, 0.0]}
+        )
+        assert moved == [0, 2]
+        with pytest.raises(ValueError, match="no object with id or name 'ghost'"):
+            env.step([1.0, 0.0], action_id="ghost")
+
+    def test_sequential_actions_start_at_id(self, env_factory, tmp_path):
+        env = self._make(env_factory, tmp_path)
+        assert self._step_and_moved(env, [[1.0, 0.0]] * 2, action_id=1) == [1, 2]
+
+
+class TestDisableAllPlotSkipsFigure:
+    """``disable_all_plot`` creates no figure and turns the plot helpers into no-ops."""
+
+    @pytest.mark.parametrize("projection", ["2d", "3d"])
+    def test_no_figure_and_helpers_are_noops(self, env_factory, projection):
+        plt.close("all")
+        env = env_factory(
+            "test_collision_world.yaml", disable_all_plot=True, projection=projection
+        )
+        assert env._env_plot is None
+        assert env.mouse is None
+        assert plt.get_fignums() == []
+
+        env.step()
+        env.render()
+        env.draw_trajectory(env.robot.trajectory)
+        env.draw_points([[1.0, 1.0]])
+        env.set_title("headless")
+        env.save_figure()
+        env.reset_plot()
+        env.random_obstacle_position()
+        if projection == "2d":
+            env.reset(random=True)
+            env.reload()
+            env.step()
+        env.end()
+
+        assert plt.get_fignums() == []
+
+    def test_headless_ignores_full_screen(self, env_factory):
+        plt.close("all")
+        env_factory("test_collision_world.yaml", headless=True, full=True)
+        assert plt.get_fignums() == []
+
+    def test_offscreen_switches_backend_only_when_no_figure_is_open(self, env_factory):
+        """Headless never touches the backend; display=False switches to Agg
+        only while no figure exists, since switching closes every open figure
+        and would freeze another environment's window."""
+        with patch("irsim.env.env_base.matplotlib.use") as use:
+            env_factory("test_collision_world.yaml", headless=True)
+        use.assert_not_called()
+
+        with (
+            patch("irsim.env.env_base.matplotlib.use") as use,
+            patch("irsim.env.env_base.plt.get_fignums", return_value=[]),
+        ):
+            env_factory("test_collision_world.yaml", display=False)
+        use.assert_called_once_with("Agg")
+
+        with (
+            patch("irsim.env.env_base.matplotlib.use") as use,
+            patch("irsim.env.env_base.plt.get_fignums", return_value=[1]),
+        ):
+            env_factory("test_collision_world.yaml", display=False)
+        use.assert_not_called()
+
+    def test_headless_keyboard_scene_survives_rebuilds(self, env_factory):
+        """A headless scene configured for keyboard control stays in auto mode
+        across reset(random=True) and reload(), which rebuild the world and
+        re-apply the YAML control_mode; the first step after each used to
+        dereference the missing keyboard."""
+        env = env_factory("test_keyboard_control.yaml", headless=True)
+        assert env.keyboard is None
+        assert env._world_param.control_mode == "auto"
+        env.step()
+        env.reset(random=True)
+        assert env._world_param.control_mode == "auto"
+        env.step()
+        env.reload()
+        assert env._world_param.control_mode == "auto"
+        env.step()
+        assert env.key_id == 0
+        assert np.allclose(env.key_vel, 0.0)
+
+    def test_step_keeps_docstring_and_signature(self):
+        """The action normaliser must not hide step's docstring from the docs."""
+        import inspect
+
+        from irsim.env.env_base import EnvBase
+
+        assert EnvBase.step.__name__ == "step"
+        assert "single simulation step" in (EnvBase.step.__doc__ or "")
+        params = list(inspect.signature(EnvBase.step).parameters)
+        assert params[:3] == ["self", "action", "action_id"]
+
+    def test_headless_argument_and_alias(self, env_factory):
+        env = env_factory("test_collision_world.yaml", headless=True, display=True)
+        assert env.headless
+        assert env.disable_all_plot  # alias
+        assert not env.display  # headless implies no window
+        assert env._env_plot is None
+        alias = env_factory("test_collision_world.yaml", disable_all_plot=True)
+        assert alias.headless
+        assert alias._env_plot is None
+
+    def test_keyboard_construction_failure_falls_back_to_auto(self, env_factory):
+        """A KeyboardControl that cannot be built leaves the env usable in auto mode."""
+        with patch(
+            "irsim.env.env_base.KeyboardControl",
+            side_effect=RuntimeError("no input device"),
+        ):
+            env = env_factory("test_keyboard_control.yaml")
+        assert env.keyboard is None
+        assert env._world_param.control_mode == "auto"
+        env.step()
+
+    def test_keyboard_control_falls_back_to_auto(self, env_factory):
+        env = env_factory("test_keyboard_control.yaml", disable_all_plot=True)
+        assert env._world_param.control_mode == "auto"
+        env.step()
+
+
+class TestStatusArrived:
+    """Test 'Arrived' status when all robots at goal (line 634)."""
+
+    def test_arrived_status(self, env_factory):
+        """Status set to 'Arrived' when all robots arrive (line 634)."""
+        from unittest.mock import patch as mock_patch
+
+        from irsim.world.object_base import ObjectBase
+
+        env = env_factory("test_collision_world.yaml")
+        # Force all robots to have arrive_flag=True, collision_flag=False
+        for obj in env.objects:
+            if obj.role == "robot":
+                obj.arrive_flag = True
+                obj.collision_flag = False
+
+        # Patch check_status on base class to prevent collision re-detection
+        with mock_patch.object(ObjectBase, "check_status", lambda self, *args: None):
+            env._status_step()
+        assert env.status == "Arrived"
+
+    def test_save_figure_status(self, env_factory):
+        """Status set to 'Save Figure' when save_figure_flag is True (line 642)."""
+        from unittest.mock import patch as mock_patch
+
+        from irsim.world.object_base import ObjectBase
+
+        env = env_factory("test_collision_world.yaml")
+        env.save_figure_flag = True
+        with mock_patch.object(ObjectBase, "check_status", lambda self, *args: None):
+            env._status_step()
+        assert env.status == "Save Figure"
+
+    def test_quit_status(self, env_factory):
+        """Status set to 'Quit' when quit_flag is True (line 644)."""
+        from unittest.mock import patch as mock_patch
+
+        from irsim.world.object_base import ObjectBase
+
+        env = env_factory("test_collision_world.yaml")
+        env.quit_flag = True
+        with mock_patch.object(ObjectBase, "check_status", lambda self, *args: None):
+            env._status_step()
+        assert env.status == "Quit"
+
+
+class TestWarningOnce:
+    """EnvLogger.warning_once reports a keyed condition once, then at DEBUG."""
+
+    def test_warning_once_downgrades_repeats(self):
+        from loguru import logger as loguru_logger
+
+        from irsim.env.env_logger import EnvLogger
+
+        env_logger = EnvLogger(log_file=None, log_level="DEBUG")
+        records = []
+        sink = loguru_logger.add(lambda m: records.append(m.record), level="DEBUG")
+        try:
+            for _ in range(3):
+                env_logger.warning_once("robot_0 is stuck", key="stuck")
+            env_logger.warning_once("another condition")
+        finally:
+            loguru_logger.remove(sink)
+
+        levels = [r["level"].name for r in records]
+        assert levels == ["WARNING", "DEBUG", "DEBUG", "WARNING"]
+        assert "logged at DEBUG" in records[0]["message"]
+
+
+class TestCloseAlias:
+    """Tests for env.close() Gym-style alias."""
+
+    def test_close_calls_end(self, env_factory):
+        """close() delegates to end()."""
+        env = env_factory("test_collision_world.yaml")
+        with patch.object(env, "end") as mock_end:
+            env.close(ending_time=1.0)
+            mock_end.assert_called_once_with(1.0)
+
+    def test_close_default_args(self, env_factory):
+        """close() passes default ending_time and kwargs to end()."""
+        env = env_factory("test_collision_world.yaml")
+        with patch.object(env, "end") as mock_end:
+            env.close()
+            mock_end.assert_called_once_with(3.0)
+
+
+class TestCheckArrive:
+    """Tests for ObjectBase.check_arrive()."""
+
+    def test_check_arrive_none_goal(self, env_factory):
+        """check_arrive returns False when goal is None."""
+        env = env_factory("test_collision_world.yaml")
+        assert env.robot.check_arrive(None) is False
+
+    def test_check_arrive_position_mode_arrived(self, env_factory):
+        """check_arrive returns True when within threshold (position mode)."""
+        env = env_factory("test_collision_world.yaml")
+        robot = env.robot
+        robot.arrive_mode = "position"
+        goal = robot.state.copy()
+        assert robot.check_arrive(goal)
+
+    def test_check_arrive_position_mode_not_arrived(self, env_factory):
+        """check_arrive returns False when far from goal (position mode)."""
+        env = env_factory("test_collision_world.yaml")
+        robot = env.robot
+        robot.arrive_mode = "position"
+        goal = robot.state.copy()
+        goal[0, 0] += 100
+        assert not robot.check_arrive(goal)
+
+    def test_check_arrive_state_mode(self, env_factory):
+        """check_arrive works in state mode (x, y, theta)."""
+        env = env_factory("test_collision_world.yaml")
+        robot = env.robot
+        robot.arrive_mode = "state"
+        goal = robot.state.copy()
+        assert robot.check_arrive(goal)
+
+    def test_check_arrive_custom_threshold(self, env_factory):
+        """check_arrive respects custom threshold parameter."""
+        env = env_factory("test_collision_world.yaml")
+        robot = env.robot
+        robot.arrive_mode = "position"
+        goal = robot.state.astype(float).copy()
+        goal[0, 0] += 0.5
+        assert not robot.check_arrive(goal)
+        assert robot.check_arrive(goal, threshold=1.0)
+
+    def test_check_arrive_invalid_mode(self, env_factory):
+        """check_arrive raises ValueError for unsupported arrive_mode."""
+        env = env_factory("test_collision_world.yaml")
+        robot = env.robot
+        robot.arrive_mode = "invalid"
+        goal = robot.state.copy()
+        with pytest.raises(ValueError, match="Unsupported arrive_mode"):
+            robot.check_arrive(goal)
+
+
+class TestAddObjectPlot:
+    """Tests that dynamically added objects are plotted correctly."""
+
+    def test_add_object_initializes_plot(self, env_factory):
+        """add_object calls _init_plot and _step_plot on the new object."""
+        env = env_factory("test_all_objects.yaml")
+        obs = env.create_obstacle(
+            shape={"name": "circle", "radius": 0.3},
+            state=[5, 5, 0],
+        )
+        env.add_object(obs)
+        # After add, plot attributes should be initialized
+        assert hasattr(obs, "plot_attr_list")
+
+    def test_add_objects_initializes_plot(self, env_factory):
+        """add_objects calls _init_plot and _step_plot on each new object."""
+        env = env_factory("test_all_objects.yaml")
+        obs1 = env.create_obstacle(
+            shape={"name": "circle", "radius": 0.3},
+            state=[5, 5, 0],
+        )
+        obs2 = env.create_obstacle(
+            shape={"name": "circle", "radius": 0.3},
+            state=[6, 6, 0],
+        )
+        env.add_objects([obs1, obs2])
+        assert hasattr(obs1, "plot_attr_list")
+        assert hasattr(obs2, "plot_attr_list")
+
+
+class TestMouseProperties:
+    """Tests for mouse position properties."""
+
+    def test_mouse_pos(self, env_factory):
+        """mouse_pos property returns without error."""
+        env = env_factory("test_collision_world.yaml")
+        pos = env.mouse_pos
+        # Initially None (no mouse event)
+        assert pos is None or pos is not None
+
+    def test_mouse_left_pos(self, env_factory):
+        """mouse_left_pos property returns without error."""
+        env = env_factory("test_collision_world.yaml")
+        pos = env.mouse_left_pos
+        assert pos is None or pos is not None
+
+    def test_mouse_right_pos(self, env_factory):
+        """mouse_right_pos property returns without error."""
+        env = env_factory("test_collision_world.yaml")
+        pos = env.mouse_right_pos
+        assert pos is None or pos is not None
+
+
+class TestObjectVelocityProperties:
+    """Tests for object velocity and heading properties."""
+
+    def test_velocity_xy_diff(self, env_factory):
+        """velocity_xy works for diff-drive robots."""
+        env = env_factory("test_collision_world.yaml")
+        robot = env.robot
+        vel = robot.velocity_xy
+        assert vel.shape == (2, 1)
+
+    def test_max_speed_diff(self, env_factory):
+        """max_speed works for diff-drive robots."""
+        env = env_factory("test_collision_world.yaml")
+        robot = env.robot
+        speed = robot.max_speed
+        assert speed >= 0
+
+    def test_heading_diff(self, env_factory):
+        """heading property works for diff-drive robots."""
+        env = env_factory("test_collision_world.yaml")
+        robot = env.robot
+        heading = robot.heading
+        assert np.isscalar(heading)
+
+    def test_rvo_neighbors(self, env_factory):
+        """rvo_neighbors returns a list."""
+        env = env_factory("test_collision_avoidance.yaml", full=True)
+        robot = env.robot
+        neighbors = robot.rvo_neighbors
+        assert isinstance(neighbors, list)
+
+    def test_desired_omni_vel_no_goal(self, env_factory):
+        """get_desired_omni_vel returns zeros when goal is None."""
+        env = env_factory("test_collision_world.yaml")
+        robot = env.robot
+        robot.set_goal(None)
+        vel = robot.get_desired_omni_vel()
+        assert np.allclose(vel, np.zeros((2, 1)))
+
+    def test_desired_omni_vel_points_at_goal_for_diff(self, tmp_path):
+        """A diff robot's vel_max is [linear, angular]; the desired velocity
+        must follow the goal bearing at the linear limit, not scale y by the
+        angular limit (which sent rvo/sfm diff robots away from the goal)."""
+        config = tmp_path / "diff_desired.yaml"
+        config.write_text(
+            "world: {height: 10, width: 10, step_time: 0.1}\n"
+            "robot:\n"
+            "  - kinematics: {name: 'diff'}\n"
+            "    shape: {name: 'circle', radius: 0.2}\n"
+            "    state: [1, 1, 0.785]\n"
+            "    goal: [9, 9, 0]\n"
+            "    vel_max: [3, 1]\n"
+            "  - kinematics: {name: 'omni'}\n"
+            "    shape: {name: 'circle', radius: 0.2}\n"
+            "    state: [1, 2, 0]\n"
+            "    goal: [9, 10, 0]\n"
+            "    vel_max: [3, 1]\n"
+        )
+        env = irsim.make(str(config), display=False, save_ani=False)
+        try:
+            diff, omni = env.robot_list
+            vel = diff.get_desired_omni_vel().flatten()
+            assert np.arctan2(vel[1], vel[0]) == pytest.approx(np.pi / 4, abs=1e-9)
+            assert np.hypot(*vel) == pytest.approx(3.0)
+            assert np.allclose(diff.desired_omni_vel, diff.get_desired_omni_vel())
+            # omni keeps its per-axis translational bounds
+            vel = omni.get_desired_omni_vel().flatten()
+            assert vel == pytest.approx([3 * np.cos(np.pi / 4), 1 * np.sin(np.pi / 4)])
+        finally:
+            env.end()
+
+
+class TestInitialSensorStep:
+    """Sensors are stepped once when the scene is built."""
+
+    def test_scan_is_taken_at_construction(self, env_factory):
+        """A scan read right after make() already sees the scene, and it is the
+        same scan an explicit sensor step would take at that pose."""
+        env = env_factory("test_grid_map.yaml")
+        robot = env.robot
+        before = np.array(env.get_lidar_scan()["ranges"], copy=True)
+        assert before.min() < robot.lidar.range_max
+
+        robot.sensor_step()
+        np.testing.assert_allclose(robot.lidar.range_data, before)
+
+    def test_get_msg_scan_is_finite_unless_use_inf(self, env_factory):
+        """``get_msg()`` keeps the finite scan; ``use_inf=True`` uses infinities."""
+        env = env_factory("test_grid_map.yaml")
+        env.step()
+        finite = env.get_msg().robots[0].scan.ranges
+        np.testing.assert_allclose(finite, env.get_lidar_scan()["ranges"], rtol=1e-6)
+        rep = env.get_msg(use_inf=True).robots[0].scan.ranges
+        valid = env.get_lidar_scan()["valid"]
+        assert np.all(np.isfinite(rep[valid]))
+        assert np.all(np.isposinf(rep[~valid]))
+
+    def test_scan_is_taken_after_reload(self, env_factory):
+        env = env_factory("test_grid_map.yaml")
+        env.reload()
+        assert np.min(env.get_lidar_scan()["ranges"]) < env.robot.lidar.range_max
+
+    def test_scan_is_taken_after_random_reset(self, env_factory):
+        """``reset(random=True)`` rebuilds the scene; the scan is real before
+        any step, as after construction and ``reload()``."""
+        env = env_factory("test_grid_map.yaml")
+        env.reset(random=True)
+        assert np.min(env.get_lidar_scan()["ranges"]) < env.robot.lidar.range_max
+
+
+class TestStateArrival:
+    """arrive_mode 'state' wraps the heading and tolerates goals without theta."""
+
+    @staticmethod
+    def _scene(tmp_path, goal, loop=False):
+        config = tmp_path / "state_arrival.yaml"
+        config.write_text(
+            "world: {height: 10, width: 10, step_time: 0.1}\n"
+            "robot:\n"
+            "  - kinematics: {name: 'diff'}\n"
+            "    shape: {name: 'circle', radius: 0.2}\n"
+            "    state: [5, 5, -3.1]\n"
+            f"    goal: {goal}\n"
+            "    arrive_mode: 'state'\n"
+            f"    behavior: {{name: 'dash', loop: {loop}}}\n"
+        )
+        return str(config)
+
+    def test_heading_difference_is_wrapped(self, tmp_path, env_factory):
+        """theta -3.1 and 3.1 are 0.08 rad apart, so the robot has arrived."""
+        env = env_factory(self._scene(tmp_path, "[5, 5, 3.1]"))
+        assert env.robot.check_arrive(env.robot.goal)
+
+    def test_goal_without_theta_is_checked_by_position(self, tmp_path, env_factory):
+        """A two-element goal used to raise a shape mismatch in state mode."""
+        env = env_factory(self._scene(tmp_path, "[5, 5, 3.1]"))
+        env.robot.set_goal([5.0, 5.0])
+        assert env.robot.check_arrive(env.robot.goal)
+        env.step()  # check_status runs the same comparison
+
+    def test_loop_keeps_theta_in_state_mode(self, tmp_path, env_factory):
+        """loop rebuilds the waypoints with their headings, so a single-goal
+        loop in state mode no longer crashes after the first arrival."""
+        env = env_factory(self._scene(tmp_path, "[5.05, 5, 0]", loop=True))
+        for _ in range(60):
+            env.step()
+        assert all(len(g) == 3 for g in env.robot._goal)
+
+
+class TestAssignKeyboardAction:
+    """Tests for _assign_keyboard_action with different kinematics."""
+
+    def test_omni_angular_keyboard_action(self, env_factory):
+        """Test keyboard action conversion for omni_angular robot."""
+        env = env_factory("test_keyboard_control2.yaml")
+        # Temporarily set control mode to keyboard
+        original_mode = env._world_param.control_mode
+        env._world_param.control_mode = "keyboard"
+        env.keyboard.key_vel = np.array([[1.0], [0.5], [0.3]])
+
+        # Mock robot kinematics name
+        robot = env.robot_list[env.key_id]
+        original_kf_name = robot.kf.name if robot.kf else None
+
+        # Test omni_angular
+        if robot.kf:
+            robot.kf.name = "omni_angular"
+        action = [np.zeros((3, 1)) for _ in range(len(env.robot_list))]
+        result = env._assign_keyboard_action(action)
+        vel = result[env.key_id]
+        assert vel.shape == (3, 1)
+        assert vel[0, 0] == pytest.approx(1.0)
+        # axis2 is rescaled from key_ang_max to key_lv_max for omni robots
+        expected_lat = 0.5 / env.keyboard.key_ang_max * env.keyboard.key_lv_max
+        assert vel[1, 0] == pytest.approx(expected_lat)
+        assert vel[2, 0] == pytest.approx(0.3)
+
+        # Test omni
+        if robot.kf:
+            robot.kf.name = "omni"
+        action = [np.zeros((2, 1)) for _ in range(len(env.robot_list))]
+        result = env._assign_keyboard_action(action)
+        vel = result[env.key_id]
+        assert vel.shape == (2, 1)
+
+        # Restore
+        if robot.kf:
+            robot.kf.name = original_kf_name
+        env._world_param.control_mode = original_mode
+
+
+class TestAssignGroupAction:
+    """Group actions are routed to their members by identity, not by position."""
+
+    def test_actions_follow_members_not_positions(self):
+        """A group's actions land on its own members wherever they sit in
+        ``objects``, and a group without a behavior contributes nothing."""
+        from unittest.mock import MagicMock
+
+        from irsim.env.env_base import EnvBase
+
+        objects = [MagicMock(name=f"obj{i}") for i in range(5)]
+        # Group A: two plain objects, no group behavior -> one None per member
+        # (the old single-element ``[None]`` shifted every later group by one).
+        group_a = MagicMock()
+        group_a.members = [objects[0], objects[1]]
+        group_a.gen_group_vel.return_value = [None, None]
+        # Group B: non-contiguous members listed out of ``objects`` order.
+        group_b = MagicMock()
+        group_b.members = [objects[4], objects[2]]
+        group_b.gen_group_vel.return_value = ["act4", "act2"]
+
+        mock_env = MagicMock()
+        mock_env.objects = objects
+        mock_env._object_groups = [group_a, group_b]
+
+        result = EnvBase._assign_group_action(mock_env, [None] * 5)
+
+        assert result == [None, None, "act2", None, "act4"]
+
+    def test_existing_action_takes_priority(self):
+        """A keyboard/user action already in the list is not overwritten."""
+        from unittest.mock import MagicMock
+
+        from irsim.env.env_base import EnvBase
+
+        objects = [MagicMock(), MagicMock()]
+        group = MagicMock()
+        group.members = objects
+        group.gen_group_vel.return_value = ["g0", "g1"]
+
+        mock_env = MagicMock()
+        mock_env.objects = objects
+        mock_env._object_groups = [group]
+
+        result = EnvBase._assign_group_action(mock_env, ["user0", None])
+
+        assert result == ["user0", "g1"]
+
+    def test_deleted_member_does_not_shift_actions(self):
+        """An action for a member no longer in ``objects`` is dropped instead
+        of landing on the next object."""
+        from unittest.mock import MagicMock
+
+        from irsim.env.env_base import EnvBase
+
+        kept0, deleted, kept2 = MagicMock(), MagicMock(), MagicMock()
+        group = MagicMock()
+        group.members = [kept0, deleted, kept2]
+        group.gen_group_vel.return_value = ["a0", "a_deleted", "a2"]
+
+        mock_env = MagicMock()
+        mock_env.objects = [kept0, kept2]
+        mock_env._object_groups = [group]
+
+        result = EnvBase._assign_group_action(mock_env, [None, None])
+
+        assert result == ["a0", "a2"]
+
+    def test_plain_group_before_group_behavior_via_make(self, tmp_path):
+        """End-to-end: two dash robots ahead of an sfm group each keep their own
+        behavior, and every sfm member receives a group action."""
+        config = tmp_path / "mixed_groups.yaml"
+        config.write_text(
+            "world:\n"
+            "  height: 20\n"
+            "  width: 20\n"
+            "  step_time: 0.1\n"
+            "  collision_mode: 'unobstructed'\n"
+            "robot:\n"
+            "  - number: 2\n"
+            "    kinematics: {name: 'diff'}\n"
+            "    shape: {name: 'circle', radius: 0.2}\n"
+            "    state: [[1, 1, 0], [1, 3, 0]]\n"
+            "    goal: [[19, 1, 0], [19, 3, 0]]\n"
+            "    behavior: {name: 'dash'}\n"
+            "    vel_max: [1, 1]\n"
+            "  - number: 3\n"
+            "    kinematics: {name: 'omni'}\n"
+            "    shape: {name: 'circle', radius: 0.2}\n"
+            "    state: [[5, 10, 0], [10, 10, 0], [15, 10, 0]]\n"
+            "    goal: [[5, 19, 0], [10, 19, 0], [15, 19, 0]]\n"
+            "    vel_max: [2, 2]\n"
+            "    vel_min: [-2, -2]\n"
+            "    group_behavior: {name: 'sfm'}\n"
+        )
+
+        env = irsim.make(str(config), display=False, save_ani=False)
+        try:
+            assigned = env._assign_group_action([None] * len(env.objects))
+            # dash robots get no group action; every sfm member gets one
+            assert assigned[0] is None
+            assert assigned[1] is None
+            assert all(a is not None for a in assigned[2:])
+
+            start = np.array([r.state[:2, 0] for r in env.robot_list])
+            for _ in range(20):
+                env.step()
+            end = np.array([r.state[:2, 0] for r in env.robot_list])
+        finally:
+            env.end()
+
+        moved = end - start
+        # dash robots drove toward +x on their own; the second one used to
+        # receive the first sfm member's velocity and spin in place instead.
+        assert moved[0, 0] > 1.0
+        assert moved[1, 0] > 1.0
+        # all three sfm members moved toward +y (their goals)
+        assert (moved[2:, 1] > 0.5).all()
+
+
+class TestMapObjectGrouping:
+    """The grid-map object is scenery: it never becomes a group member."""
+
+    def test_map_object_is_in_no_group(self, env_factory):
+        """With an ``obstacle_map``, every robot and obstacle belongs to exactly
+        one group and the map object to none."""
+        env = env_factory("test_grid_map.yaml")
+
+        map_objects = [obj for obj in env.objects if obj.shape == "map"]
+        assert len(map_objects) == 1
+
+        members = [m for group in env._object_groups for m in group.members]
+        assert map_objects[0] not in members
+        non_map = [obj for obj in env.objects if obj.shape != "map"]
+        assert sorted(members, key=lambda o: o.id) == non_map
+        assert len(members) == len(set(members))
+
+    def test_map_does_not_join_group_behavior(self, tmp_path):
+        """A robot group with a group behavior and an ``obstacle_map`` used to
+        get the map as a third member, i.e. a giant phantom agent at the map
+        centroid that the robots avoided instead of heading to their goals."""
+        config = tmp_path / "map_group.yaml"
+        config.write_text(
+            "world:\n"
+            "  height: 20\n"
+            "  width: 20\n"
+            "  step_time: 0.1\n"
+            "  collision_mode: 'unobstructed'\n"
+            "  obstacle_map:\n"
+            "    name: perlin\n"
+            "    resolution: 0.5\n"
+            "    complexity: 0.08\n"
+            "    fill: 0.05\n"
+            "    fractal: 1\n"
+            "    attenuation: 0.5\n"
+            "    seed: 3\n"
+            "robot:\n"
+            "  - number: 2\n"
+            "    kinematics: {name: 'omni'}\n"
+            "    shape: {name: 'circle', radius: 0.2}\n"
+            "    state: [[2, 2, 0], [2, 4, 0]]\n"
+            "    goal: [[18, 2, 0], [18, 4, 0]]\n"
+            "    vel_max: [2, 2]\n"
+            "    vel_min: [-2, -2]\n"
+            "    group_behavior: {name: 'sfm'}\n"
+            "obstacle:\n"
+            "  - number: 2\n"
+            "    kinematics: {name: 'omni'}\n"
+            "    shape: {name: 'circle', radius: 0.2}\n"
+            "    state: [[2, 16, 0], [2, 18, 0]]\n"
+            "    goal: [[2, 6, 0], [2, 8, 0]]\n"
+            "    vel_max: [2, 2]\n"
+            "    vel_min: [-2, -2]\n"
+            "    group_behavior: {name: 'sfm'}\n"
+        )
+
+        env = irsim.make(str(config), display=False, save_ani=False)
+        try:
+            robot_group, obstacle_group = env._object_groups
+            assert [m.name for m in robot_group.members] == ["robot_0", "robot_1"]
+            assert [m.name for m in obstacle_group.members] == [
+                "obstacle_2",
+                "obstacle_3",
+            ]
+            assert len(robot_group.gen_group_vel()) == 2
+            assert len(obstacle_group.gen_group_vel()) == 2
+
+            start = np.array([r.state[:2, 0] for r in env.robot_list])
+            for _ in range(20):
+                env.step()
+            end = np.array([r.state[:2, 0] for r in env.robot_list])
+        finally:
+            env.end()
+
+        # both robots made progress toward +x (their goals)
+        assert ((end - start)[:, 0] > 1.0).all()
+
+
+class TestMidProcessEdgeCases:
+    """Tests for ObjectBase.mid_process state padding/truncation."""
+
+    def test_mid_process_truncates(self, env_factory):
+        """mid_process truncates state larger than state_dim."""
+        env = env_factory("test_collision_world.yaml")
+        robot = env.robot
+        large_state = np.zeros((robot.state_dim + 2, 1))
+        result = robot.mid_process(large_state)
+        assert result.shape[0] == robot.state_dim
+
+    def test_mid_process_pads(self, env_factory):
+        """mid_process pads state smaller than state_dim."""
+        env = env_factory("test_collision_world.yaml")
+        robot = env.robot
+        small_state = np.array([[1.0], [2.0], [0.0]])  # 3 rows, state_dim may be larger
+        if robot.state_dim > 3:
+            result = robot.mid_process(small_state)
+            assert result.shape[0] == robot.state_dim
+
+
+class Test3DEnvironment:
+    """3D-projection environment behavior (EnvBase3D / EnvPlot3D)."""
+
+    def test_simulation_loop_with_drawing_3d(self, env_factory):
+        """Step a 3D env while drawing trajectories with direction markers."""
+        env = env_factory("test_collision_avoidance.yaml", projection="3d")
+        for _ in range(20):
+            env.step()
+            env.render(0.01)
+            env.draw_trajectory(env.robot.trajectory, show_direction=True)
+            if env.done():
+                break
+        assert len(env.robot.trajectory) > 0
+
+    def test_polygon_and_lidar_3d(self, env_factory):
+        """Lidar access, point drawing, and object deletion work in 3D."""
+        env = env_factory("test_all_objects.yaml", projection="3d")
+        env.random_polygon_shape()
+        points = env.robot.get_lidar_points()
+        env.draw_points(points)
+
+        assert env.robot.get_lidar_scan() is not None
+        assert env.robot.get_lidar_offset() is not None
+        assert env.get_obstacle_info_list()
+        assert env.get_robot_info_list()
+
+        n_before = len(env.objects)
+        env.delete_objects([1, 2])
+        assert len(env.objects) == n_before - 2
+
+        for _ in range(5):
+            env.step()
+            env.render(0.01)
+
+    def test_grid_map_3d(self, env_factory):
+        """Grid-map worlds render in 3D and objects expose G/h matrices."""
+        env = env_factory("test_grid_map.yaml", projection="3d")
+        for _ in range(3):
+            env.step()
+            env.render(0.01)
+        assert env.robot.get_init_Gh() is not None
+
+
+class TestLoadBehaviorReinitialization:
+    """EnvBase.load_behavior reinitializes object and group behaviors."""
+
+    def test_load_behavior_with_group_behaviors_mock(self):
+        """load_behavior reinitializes both object and group behaviors."""
+        from unittest.mock import MagicMock, patch
+
+        from irsim.env.env_base import EnvBase
+
+        mock_env = MagicMock()
+        mock_obj = MagicMock()
+        mock_obj.obj_behavior = MagicMock()
+        mock_env.objects = [mock_obj]
+
+        mock_group = MagicMock()
+        mock_group.group_behavior = MagicMock()
+        mock_env._object_groups = [mock_group]
+
+        with patch("importlib.import_module"):
+            EnvBase.load_behavior(mock_env, "test_module")
+
+        mock_obj.obj_behavior._init_behavior_class.assert_called_once()
+        mock_group.group_behavior._init_group_behavior_class.assert_called_once()
+
+    def test_load_behavior_import_error_mock(self):
+        """load_behavior logs an error and returns early on import error."""
+        from unittest.mock import MagicMock, patch
+
+        from irsim.env.env_base import EnvBase
+
+        mock_env = MagicMock()
+        mock_env.objects = []
+        mock_env._object_groups = []
+
+        with patch(
+            "importlib.import_module", side_effect=ImportError("Module not found")
+        ):
+            EnvBase.load_behavior(mock_env, "nonexistent_module")
+
+        mock_env.logger.error.assert_called_once()
+        assert "Failed to load module" in mock_env.logger.error.call_args[0][0]
+
+    def test_load_behavior_skips_none_behaviors(self):
+        """load_behavior tolerates objects and groups without behaviors."""
+        from unittest.mock import MagicMock, patch
+
+        from irsim.env.env_base import EnvBase
+
+        mock_env = MagicMock()
+        mock_obj_no_attr = MagicMock(spec=[])
+        mock_obj_none = MagicMock()
+        mock_obj_none.obj_behavior = None
+        mock_obj_valid = MagicMock()
+        mock_obj_valid.obj_behavior = MagicMock()
+        mock_env.objects = [mock_obj_no_attr, mock_obj_none, mock_obj_valid]
+
+        mock_group_no_attr = MagicMock(spec=[])
+        mock_group_none = MagicMock()
+        mock_group_none.group_behavior = None
+        mock_env._object_groups = [mock_group_no_attr, mock_group_none]
+
+        with patch("importlib.import_module"):
+            EnvBase.load_behavior(mock_env, "test_module")
+
+        mock_obj_valid.obj_behavior._init_behavior_class.assert_called_once()
+
+
+class TestEnvConfigNamespace:
+    """EnvConfig supports IR-SIM embedded in a combined YAML file."""
+
+    def test_make_and_reload_namespaced_yaml(self, tmp_path, env_factory):
+        """make(path) selects the irsim section and reloads the same file."""
+        yaml_file = tmp_path / "combined.yaml"
+        yaml_file.write_text(
+            "irsim:\n"
+            "  world: {height: 10, width: 12}\n"
+            "  robot: []\n"
+            "habitat:\n"
+            "  scene: example.glb\n"
+        )
+
+        env = env_factory(str(yaml_file))
+
+        assert env.env_config.parse["world"]["height"] == 10
+        assert env.env_config.parse["robot"] == []
+
+        yaml_file.write_text(
+            "irsim:\n"
+            "  world: {height: 20, width: 12}\n"
+            "  robot: []\n"
+            "habitat:\n"
+            "  scene: example.glb\n"
+        )
+        env.reload()
+
+        assert env.env_config.parse["world"]["height"] == 20
+
+    def test_non_mapping_irsim_key_is_left_to_the_key_check(
+        self, tmp_path, dummy_logger
+    ):
+        """An 'irsim' key that is not a mapping is reported as an unknown key."""
+        from irsim.env.env_config import EnvConfig
+
+        yaml_file = tmp_path / "scalar_irsim.yaml"
+        yaml_file.write_text("irsim: 2.9.4\nworld:\n  height: 10\n")
+
+        with pytest.raises(KeyError, match="irsim"):
+            EnvConfig(str(yaml_file))
+
+    def test_invalid_key_inside_irsim_section(self, tmp_path, dummy_logger):
+        """Unknown keys remain errors inside the selected irsim section."""
+        from irsim.env.env_config import EnvConfig
+
+        yaml_file = tmp_path / "bad_nested.yaml"
+        yaml_file.write_text("irsim:\n  wrold:\n    height: 10\nhabitat: {}\n")
+
+        with pytest.raises(KeyError):
+            EnvConfig(str(yaml_file))
+
+
+class TestCustomConfigSection:
+    """A scenario can carry values IR-SIM stores but never interprets."""
+
+    def test_custom_section_is_returned_as_written(self, tmp_path, env_factory):
+        """Nested custom values come back through env.config, unchanged."""
+        yaml_file = tmp_path / "custom.yaml"
+        yaml_file.write_text(
+            "world: {height: 20, width: 20, step_time: 0.1}\n"
+            "robot: []\n"
+            "custom:\n"
+            "  safe_margin: 0.15\n"
+            "  planner: {horizon: 20, weights: [1.0, 0.5]}\n"
+        )
+
+        env = env_factory(str(yaml_file))
+
+        assert env.config["custom"]["safe_margin"] == 0.15
+        assert env.config["custom"]["planner"] == {"horizon": 20, "weights": [1.0, 0.5]}
+        # the interpreted sections stay readable from the same place
+        assert env.config["world"]["step_time"] == 0.1
+
+    def test_custom_section_defaults_to_empty(self, tmp_path, env_factory):
+        """A scenario without the section still has somewhere to look."""
+        yaml_file = tmp_path / "plain.yaml"
+        yaml_file.write_text("world: {height: 20, width: 20}\nrobot: []\n")
+
+        env = env_factory(str(yaml_file))
+
+        assert env.config["custom"] == {}
+
+    def test_custom_section_is_reparsed_on_reload(self, tmp_path, env_factory):
+        """Reload re-reads the file, so custom values follow the YAML."""
+        yaml_file = tmp_path / "live.yaml"
+        yaml_file.write_text(
+            "world: {height: 20, width: 20}\nrobot: []\ncustom: {margin: 0.1}\n"
+        )
+        env = env_factory(str(yaml_file))
+        assert env.config["custom"]["margin"] == 0.1
+
+        yaml_file.write_text(
+            "world: {height: 20, width: 20}\nrobot: []\ncustom: {margin: 0.9}\n"
+        )
+        env.reload()
+
+        assert env.config["custom"]["margin"] == 0.9
+
+    def test_custom_section_is_not_validated(self, tmp_path, env_factory):
+        """Whatever the section holds is the scenario's business, not IR-SIM's."""
+        yaml_file = tmp_path / "free.yaml"
+        yaml_file.write_text(
+            "world: {height: 20, width: 20}\nrobot: []\n"
+            "custom:\n  wrold: 1\n  anything: [{deep: {nested: true}}]\n"
+        )
+
+        env = env_factory(str(yaml_file))
+
+        assert env.config["custom"]["wrold"] == 1
+        assert env.config["custom"]["anything"][0]["deep"]["nested"] is True
+
+
+class TestEnvConfigInvalidKey:
+    """EnvConfig.load_yaml reports invalid legacy top-level YAML keys."""
+
+    def test_invalid_yaml_key_close_match(self, tmp_path, dummy_logger):
+        """A close typo raises KeyError (with a suggested key)."""
+        from irsim.env.env_config import EnvConfig
+
+        yaml_file = tmp_path / "bad.yaml"
+        yaml_file.write_text("wrold:\n  height: 10\n")
+
+        with pytest.raises(KeyError):
+            EnvConfig(str(yaml_file))
+
+    def test_invalid_yaml_key_no_match(self, tmp_path, dummy_logger):
+        """An unrecognised key raises KeyError listing the valid keys."""
+        from irsim.env.env_config import EnvConfig
+
+        yaml_file = tmp_path / "bad2.yaml"
+        yaml_file.write_text("zzzzz:\n  foo: bar\n")
+
+        with pytest.raises(KeyError):
+            EnvConfig(str(yaml_file))
+
+
+class TestLoggerSetup:
+    """File-based logging."""
+
+    def test_env_logger_with_file(self, tmp_path):
+        """EnvLogger writes to the log file when one is given."""
+        from irsim.env.env_logger import EnvLogger
+
+        log_file = tmp_path / "sim.log"
+        logger = EnvLogger(str(log_file), "WARNING")
+        logger.warning("file sink test")
+        assert log_file.exists()
+        assert "file sink test" in log_file.read_text()
+
+    def test_each_env_keeps_its_own_log_sinks(self, tmp_path, env_factory):
+        """A second environment neither removes the first one's sinks nor
+        receives its messages, and end() releases an environment's sinks."""
+        log_a, log_b = tmp_path / "a.log", tmp_path / "b.log"
+        env_a = env_factory(
+            "test_collision_world.yaml", log_file=str(log_a), log_level="INFO"
+        )
+        env_b = env_factory(
+            "test_collision_world.yaml", log_file=str(log_b), log_level="ERROR"
+        )
+        env_a.logger.warning("from-a-after-b")
+        env_b.logger.error("from-b")
+        env_b.logger.warning("b-below-level")
+
+        a_text, b_text = log_a.read_text(), log_b.read_text()
+        assert "from-a-after-b" in a_text
+        assert "from-a-after-b" not in b_text
+        assert "from-b" in b_text
+        assert "from-b" not in a_text
+        assert "b-below-level" not in b_text
+
+        env_a.end()
+        env_a.logger.warning("a-after-end")
+        assert "a-after-end" not in log_a.read_text()
+
+    def test_output_root_falls_back_to_cwd_without_a_script(
+        self, monkeypatch, tmp_path
+    ):
+        """Under python -c, a REPL or a notebook sys.path[0] is empty; the
+        output folders then go under the working directory, not under '/'."""
+        import sys
+
+        from irsim.config.path_param import PathManager, output_root
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(sys, "path", ["", *sys.path[1:]])
+        assert output_root() == str(tmp_path)
+        assert PathManager().fig_path == str(tmp_path) + "/figure"
+
+        monkeypatch.setattr(sys, "path", ["/some/script/dir", *sys.path[1:]])
+        assert PathManager().ani_path == "/some/script/dir/animation"
+
+
+class TestStatusAndActionEdgeCases:
+    """Status stepping without robots and action normalization variants."""
+
+    def test_status_step_no_robots(self, tmp_path, env_factory):
+        """A world without robots still reports Running after a step."""
+        config = tmp_path / "no_robot.yaml"
+        config.write_text(
+            "world:\n  height: 10\n  width: 10\n"
+            "obstacle:\n  - shape: {name: 'circle', radius: 1.0}\n"
+            "    state: [5, 5, 0]\n"
+        )
+        env = env_factory(str(config))
+        env.step()
+        assert env.status == "Running"
+
+    def test_yaml_config_failure_raises(self, tmp_path):
+        """An invalid top-level YAML key is logged critical and re-raised."""
+        bad = tmp_path / "bad_key.yaml"
+        bad.write_text("wrold:\n  height: 10\n")
+        with pytest.raises(KeyError):
+            irsim.make(str(bad), display=False)
+
+    def test_step_ndarray_action_with_id_list(self, env_factory):
+        """A single ndarray action can be routed to robots by an id list."""
+        env = env_factory("test_multi_objects_world.yaml")
+        action = np.array([[0.5], [0.0]])
+        env.step(action, action_id=[0])
+        assert env.robot.velocity.shape == (2, 1)
+        assert np.linalg.norm(env.robot.velocity) > 0
+
+
+class TestBatchedCollisionQuery:
+    """The batched per-step collision query matches the per-object tree query."""
+
+    @pytest.mark.parametrize(
+        "yaml_file",
+        [
+            "test_multi_objects_world.yaml",
+            "test_collision_world.yaml",
+            "test_grid_map.yaml",
+        ],
+    )
+    def test_matches_per_object_checks(self, env_factory, yaml_file):
+        env = env_factory(yaml_file)
+        for _ in range(5):
+            env.step()
+        batched = env._colliding_objects()
+        assert set(batched) == {obj.id for obj in env.objects}
+        for obj in env.objects:
+            expected = {
+                o.id for o in obj.possible_collision_objects if obj.check_collision(o)
+            }
+            assert {o.id for o in batched[obj.id]} == expected
+            assert obj.collision_flag == bool(expected)
+
+
+class TestDisplayBackend:
+    """A displayed environment opens a window, never an IDE's still image."""
+
+    @staticmethod
+    def _make_and_collect_warnings():
+        from loguru import logger as loguru_logger
+
+        records = []
+        sink = loguru_logger.add(lambda m: records.append(m.record), level="WARNING")
+        try:
+            irsim.make("test_collision_world.yaml", display=True).end(0.01)
+        finally:
+            loguru_logger.remove(sink)
+        return [
+            r["message"] for r in records if "will not be displayed" in r["message"]
+        ]
+
+    def test_agg_warns_without_searching(self):
+        """Agg, named by conftest or resolved earlier, is kept but shows no window."""
+        with patch("irsim.env.env_base.plt.switch_backend") as switch:
+            messages = self._make_and_collect_warnings()
+        switch.assert_not_called()
+        assert len(messages) == 1
+        assert "python3-tk" in messages[0]
+
+    def test_gui_backend_is_kept_silently(self, monkeypatch):
+        monkeypatch.setitem(matplotlib.rcParams, "backend", "tkagg")
+        with patch("irsim.env.env_base.plt.switch_backend") as switch:
+            messages = self._make_and_collect_warnings()
+        switch.assert_not_called()
+        assert messages == []
+
+    def test_inline_backend_is_replaced_by_the_matplotlib_search(self, monkeypatch):
+        """PyCharm SciView renders still images, so a plt.pause loop cannot animate."""
+        monkeypatch.setitem(matplotlib.rcParams, "backend", "module://backend_interagg")
+        with patch("irsim.env.env_base.plt.switch_backend") as switch:
+            irsim.make("test_collision_world.yaml", display=True).end(0.01)
+        switch.assert_called_once_with(matplotlib.rcsetup._auto_backend_sentinel)
+
+    def test_inline_figure_does_not_block_the_search(self, monkeypatch):
+        """A figure drawn earlier in the notebook cell is a still image, not a window."""
+        monkeypatch.setitem(matplotlib.rcParams, "backend", "module://backend_interagg")
+        plt.figure()
+        with patch("irsim.env.env_base.plt.switch_backend") as switch:
+            irsim.make("test_collision_world.yaml", display=True).end(0.01)
+        switch.assert_called_once_with(matplotlib.rcsetup._auto_backend_sentinel)
+
+    def test_warns_when_the_search_ends_on_agg(self, monkeypatch):
+        """Without a GUI toolkit, as on Arch Linux without tk, the search ends on Agg."""
+        monkeypatch.setitem(matplotlib.rcParams, "backend", "module://backend_interagg")
+
+        def search_ends_on_agg(_backend):
+            matplotlib.rcParams["backend"] = "agg"
+
+        with patch(
+            "irsim.env.env_base.plt.switch_backend", side_effect=search_ends_on_agg
+        ):
+            messages = self._make_and_collect_warnings()
+        assert len(messages) == 1

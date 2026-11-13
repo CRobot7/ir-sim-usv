@@ -1,0 +1,14 @@
+sphinx
+sphinx_rtd_theme
+sphinx-autodoc-typehints
+myst_parser
+importlib-metadata
+sphinx_copybutton
+pydata-sphinx-theme
+pynput
+sphinx_design
+sphinx_inline_tabs
+sphinx-autoapi
+sphinx-intl
+sphinxext-opengraph
+sphinx-sitemap

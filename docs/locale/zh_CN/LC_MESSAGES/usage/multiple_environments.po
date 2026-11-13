@@ -1,0 +1,341 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) 2024, Ruihua Han
+# This file is distributed under the same license as the IR-SIM package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: IR-SIM\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-07-11 14:38+0800\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: zh_CN <LL@li.org>\n"
+"Language: zh_CN\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"Generated-By: Babel 2.17.0\n"
+
+#: ../../source/usage/multiple_environments.md:1
+msgid "Multiple environments"
+msgstr "多环境"
+
+#: ../../source/usage/multiple_environments.md:3
+msgid ""
+"IR-SIM supports creating and running multiple environments simultaneously. "
+"Each environment maintains its own isolated state, including world "
+"parameters, objects, and simulation time. This is useful for:"
+msgstr ""
+"IR-SIM 支持同时创建和运行多个环境。每个环境维护各自独立的状态，包括世界参数、"
+"对象和仿真时间。适用场景包括："
+
+#: ../../source/usage/multiple_environments.md:5
+msgid "**Parallel simulations**: Running multiple scenarios simultaneously"
+msgstr "**并行仿真**：同时运行多个场景"
+
+#: ../../source/usage/multiple_environments.md:6
+msgid ""
+"**Comparison studies**: Comparing different algorithms or configurations"
+msgstr "**对比研究**：比较不同算法或配置"
+
+#: ../../source/usage/multiple_environments.md:7
+msgid "**Training**: Running multiple instances for reinforcement learning"
+msgstr "**训练**：为强化学习运行多个实例"
+
+#: ../../source/usage/multiple_environments.md:9
+msgid "Creating Multiple Environments"
+msgstr "创建多个环境"
+
+#: ../../source/usage/multiple_environments.md:23
+msgid "Isolated Parameters"
+msgstr "参数隔离"
+
+#: ../../source/usage/multiple_environments.md:25
+msgid "Each environment has completely separate parameter instances:"
+msgstr "每个环境拥有完全独立的参数实例："
+
+#: ../../source/usage/multiple_environments.md:49
+msgid "Running Multiple Environments"
+msgstr "运行多个环境"
+
+#: ../../source/usage/multiple_environments.md:0
+msgid "Sequential Execution"
+msgstr "顺序执行"
+
+#: ../../source/usage/multiple_environments.md:0
+msgid "Headless Parallel (for Training)"
+msgstr "无头并行（用于训练）"
+
+#: ../../source/usage/multiple_environments.md:117
+msgid "Parameter Isolation Details"
+msgstr "参数隔离详情"
+
+#: ../../source/usage/multiple_environments.md:119
+msgid "Each environment instance creates and binds its own parameter objects:"
+msgstr "每个环境实例创建并绑定各自的参数对象："
+
+#: ../../source/usage/multiple_environments.md:121
+msgid "**`world_param`** - Simulation state and settings:"
+msgstr "**`world_param`** - 仿真状态与设置："
+
+#: ../../source/usage/multiple_environments.md:81
+msgid "Attribute"
+msgstr "属性"
+
+#: ../../source/usage/multiple_environments.md:81
+msgid "Type"
+msgstr "类型"
+
+#: ../../source/usage/multiple_environments.md:81
+msgid "Default"
+msgstr "默认值"
+
+#: ../../source/usage/multiple_environments.md:81
+msgid "Description"
+msgstr "描述"
+
+#: ../../source/usage/multiple_environments.md:81
+msgid "`time`"
+msgstr "`time`"
+
+#: ../../source/usage/multiple_environments.md:81
+msgid "`float`"
+msgstr "`float`"
+
+#: ../../source/usage/multiple_environments.md:81
+msgid "`0.0`"
+msgstr "`0.0`"
+
+#: ../../source/usage/multiple_environments.md:81
+msgid "Current simulation time"
+msgstr "当前仿真时间"
+
+#: ../../source/usage/multiple_environments.md:81
+msgid "`control_mode`"
+msgstr "`control_mode`"
+
+#: ../../source/usage/multiple_environments.md:81
+msgid "`str`"
+msgstr "`str`"
+
+#: ../../source/usage/multiple_environments.md:81
+msgid "`\"auto\"`"
+msgstr "`\"auto\"`"
+
+#: ../../source/usage/multiple_environments.md:81
+msgid "Control mode (`\"auto\"` or `\"keyboard\"`)"
+msgstr "控制模式（`\"auto\"` 或 `\"keyboard\"`）"
+
+#: ../../source/usage/multiple_environments.md:81
+msgid "`collision_mode`"
+msgstr "`collision_mode`"
+
+#: ../../source/usage/multiple_environments.md:81
+msgid "`\"stop\"`"
+msgstr "`\"stop\"`"
+
+#: ../../source/usage/multiple_environments.md:81
+msgid "Collision handling mode"
+msgstr "碰撞处理模式"
+
+#: ../../source/usage/multiple_environments.md:81
+msgid "`step_time`"
+msgstr "`step_time`"
+
+#: ../../source/usage/multiple_environments.md:81
+msgid "`0.1`"
+msgstr "`0.1`"
+
+#: ../../source/usage/multiple_environments.md:81
+msgid "Time step duration (seconds)"
+msgstr "时间步长（秒）"
+
+#: ../../source/usage/multiple_environments.md:81
+msgid "`count`"
+msgstr "`count`"
+
+#: ../../source/usage/multiple_environments.md:81
+msgid "`int`"
+msgstr "`int`"
+
+#: ../../source/usage/multiple_environments.md:81
+msgid "`0`"
+msgstr "`0`"
+
+#: ../../source/usage/multiple_environments.md:81
+msgid "Simulation step counter"
+msgstr "仿真步数计数器"
+
+#: ../../source/usage/multiple_environments.md:131
+msgid "**`env_param`** - Environment objects and utilities:"
+msgstr "**`env_param`** - 环境对象与工具："
+
+#: ../../source/usage/multiple_environments.md:81
+msgid "`objects`"
+msgstr "`objects`"
+
+#: ../../source/usage/multiple_environments.md:81
+msgid "`list[ObjectBase]`"
+msgstr "`list[ObjectBase]`"
+
+#: ../../source/usage/multiple_environments.md:81
+msgid "List of all objects in the environment"
+msgstr "环境中所有对象的列表"
+
+#: ../../source/usage/multiple_environments.md:81
+msgid "`logger`"
+msgstr "`logger`"
+
+#: ../../source/usage/multiple_environments.md:81
+msgid "`EnvLogger`"
+msgstr "`EnvLogger`"
+
+#: ../../source/usage/multiple_environments.md:81
+msgid "Logger instance for this environment"
+msgstr "此环境的日志器实例"
+
+#: ../../source/usage/multiple_environments.md:81
+msgid "`GeometryTree`"
+msgstr "`GeometryTree`"
+
+#: ../../source/usage/multiple_environments.md:81
+msgid "`STRtree`"
+msgstr "`STRtree`"
+
+#: ../../source/usage/multiple_environments.md:81
+msgid "Spatial index for collision detection"
+msgstr "用于碰撞检测的空间索引"
+
+#: ../../source/usage/multiple_environments.md:81
+msgid "`platform_name`"
+msgstr "`platform_name`"
+
+#: ../../source/usage/multiple_environments.md:81
+msgid "Operating system name"
+msgstr "操作系统名称"
+
+#: ../../source/usage/multiple_environments.md:82
+msgid "`id_iter`"
+msgstr "`id_iter`"
+
+#: ../../source/usage/multiple_environments.md:82
+msgid "`Iterator[int]`"
+msgstr "`Iterator[int]`"
+
+#: ../../source/usage/multiple_environments.md:82
+msgid "Counter that numbers this environment's objects from 0"
+msgstr "为本环境的对象从 0 开始编号的计数器"
+
+#: ../../source/usage/multiple_environments.md:83
+msgid "`env_id`"
+msgstr "`env_id`"
+
+#: ../../source/usage/multiple_environments.md:84
+msgid "`rng`"
+msgstr "`rng`"
+
+#: ../../source/usage/multiple_environments.md:84
+msgid "`np.random.Generator`"
+msgstr "`np.random.Generator`"
+
+#: ../../source/usage/multiple_environments.md:84
+msgid ""
+"Generator of a seeded environment (`seed=` / `env.set_random_seed()`); "
+"`None` means the shared default"
+msgstr ""
+"设置了随机种子的环境（`seed=` / `env.set_random_seed()`）使用的生成器；"
+"`None` 表示使用共享的默认生成器"
+
+#: ../../source/usage/multiple_environments.md:83
+msgid ""
+"Number of the owning environment (`env.id`), assigned in creation order and "
+"never reused in a process"
+msgstr "所属环境的编号（`env.id`），按创建顺序分配，在同一进程内不会重复使用"
+
+#: ../../source/usage/multiple_environments.md:140
+msgid "**`path_param`** - File path management:"
+msgstr "**`path_param`** - 文件路径管理："
+
+#: ../../source/usage/multiple_environments.md:81
+msgid "`root_path`"
+msgstr "`root_path`"
+
+#: ../../source/usage/multiple_environments.md:81
+msgid "Path to irsim package directory"
+msgstr "irsim 包目录路径"
+
+#: ../../source/usage/multiple_environments.md:81
+msgid "`ani_buffer_path`"
+msgstr "`ani_buffer_path`"
+
+#: ../../source/usage/multiple_environments.md:81
+msgid "Path for animation frame buffer"
+msgstr "动画帧缓冲路径"
+
+#: ../../source/usage/multiple_environments.md:81
+msgid "`ani_path`"
+msgstr "`ani_path`"
+
+#: ../../source/usage/multiple_environments.md:81
+msgid "Path for saved animations"
+msgstr "保存动画的路径"
+
+#: ../../source/usage/multiple_environments.md:81
+msgid "`fig_path`"
+msgstr "`fig_path`"
+
+#: ../../source/usage/multiple_environments.md:81
+msgid "Path for saved figures"
+msgstr "保存图像的路径"
+
+#: ../../source/usage/multiple_environments.md:149
+msgid ""
+"Objects within each environment reference their own environment's parameters:"
+msgstr "每个环境中的对象引用各自环境的参数："
+
+#: ../../source/usage/multiple_environments.md:152
+msgid ""
+"Object ids are per environment as well: every environment numbers its "
+"objects from 0 (robots first), and objects created with "
+"`env.create_robot()` / `env.create_obstacle()` take their id from that "
+"environment, so ids stay unique inside each environment even when several "
+"are alive. Objects compare by identity, so `robot_0` of two environments are "
+"distinct objects (and distinct set members) even though they share the id. "
+"`env.id` numbers environments in creation order, so code that tracks objects "
+"across environments can key them by `(env.id, obj.id)`."
+msgstr ""
+"对象 id 同样按环境隔离：每个环境都从 0 开始为对象编号（机器人在前），通过 "
+"`env.create_robot()` / `env.create_obstacle()` 创建的对象从所属环境获取 id，"
+"因此即使同时存在多个环境，id 在每个环境内部也保持唯一。对象按身份（identity）"
+"比较，因此两个环境中的 `robot_0` 即使 id 相同也是不同的对象（在集合中也是不同"
+"成员）。`env.id` 按创建顺序为环境编号，需要跨环境跟踪对象的代码可以用 "
+"`(env.id, obj.id)` 作为键。"
+
+#: ../../source/usage/multiple_environments.md:154
+msgid ""
+"Random numbers follow the same rule. An environment created with `seed=` (or "
+"reseeded with `env.set_random_seed()`) draws all of its randomness — scene "
+"sampling, `reset(random=True)`, motion and sensor noise, random goals — from "
+"its own generator, so its results do not depend on what other environments "
+"do or on the order in which they are stepped. Environments created without a "
+"seed share one default generator, as before; `irsim.util.random.set_seed()` "
+"reseeds the generator in use."
+msgstr ""
+"随机数遵循同样的规则。使用 `seed=` 创建（或通过 `env.set_random_seed()` 重新设"
+"置种子）的环境，其所有随机性 —— 场景采样、`reset(random=True)`、运动与传感器噪"
+"声、随机目标 —— 都来自该环境自己的生成器，因此结果不受其他环境的影响，也与各环"
+"境的步进顺序无关。未指定种子创建的环境与以前一样共用一个默认生成器；"
+"`irsim.util.random.set_seed()` 会重新设置当前正在使用的生成器的种子。"
+
+#: ../../source/usage/multiple_environments.md:152
+msgid ""
+"When creating multiple environments with `display=True`, each environment "
+"opens its own visualization window. For training or batch simulations, use "
+"`headless=True`: no figure is built at all, and the Matplotlib backend of the "
+"process is left untouched."
+msgstr ""
+"使用 `display=True` 创建多个环境时，每个环境会打开各自的可视化窗口。对于训练"
+"或批量仿真，建议使用 `headless=True`：完全不创建图形，也不会改动进程的 "
+"Matplotlib 后端。"

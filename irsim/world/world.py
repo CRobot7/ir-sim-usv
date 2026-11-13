@@ -1,0 +1,402 @@
+import os
+import warnings
+from typing import TYPE_CHECKING, Any, ClassVar, Optional
+
+import numpy as np
+
+from irsim.util.util import check_choice, check_number, check_unknown_kwargs
+from irsim.world.map import (
+    FogMap,
+    Map,
+    _downsample_occupancy_grid,
+    resolve_obstacle_map,
+)
+
+if TYPE_CHECKING:
+    from irsim.config.world_param import WorldParam
+
+
+class World:
+    """
+    Represents the main simulation environment, managing objects and maps.
+
+    Attributes:
+        name (str): Name of the world.
+        height (float): Height of the world.
+        width (float): Width of the world.
+        step_time (float): Time interval between steps.
+        sample_time (float): Time interval between samples.
+        offset (list): Offset for the world's position.
+        step_mode (str): State advancement mode ('internal' or 'external').
+        control_mode (str): Control mode ('auto' or 'keyboard').
+        collision_mode (str): Collision mode ('stop', 'unobstructed',
+            'unobstructed_obstacles', or 'contact').
+        obstacle_map: ``None``, image path (str), grid ndarray, or generator spec dict.
+        mdownsample (int): Downsampling factor for the obstacle map.
+        status: Status of the world and objects.
+        plot: Plot configuration for the world.
+    """
+
+    _VALID_PARAMS: ClassVar[set[str]] = {
+        "name",
+        "height",
+        "width",
+        "step_time",
+        "sample_time",
+        "offset",
+        "step_mode",
+        "control_mode",
+        "collision_mode",
+        "gravity",
+        "friction",
+        "restitution",
+        "drive_tau",
+        "obstacle_map",
+        "mdownsample",
+        "fog_map",
+        "fog_map_resolution",
+        "wave",
+        "plot",
+        "status",
+    }
+
+    def __init__(
+        self,
+        name: str | None = "world",
+        height: float = 10,
+        width: float = 10,
+        step_time: float = 0.1,
+        sample_time: float | None = None,
+        offset: list[float] | None = None,
+        step_mode: str = "internal",
+        control_mode: str = "auto",
+        collision_mode: str = "stop",
+        gravity: float = 9.81,
+        friction: float = 0.5,
+        restitution: float = 0.0,
+        drive_tau: float = 0.0,
+        obstacle_map: Any | None = None,
+        mdownsample: int = 1,
+        fog_map: bool = False,
+        fog_map_resolution: float | None = None,
+        wave: dict[str, Any] | None = None,
+        plot: dict[str, Any] | None = None,
+        status: str = "None",
+        world_param_instance: Optional["WorldParam"] = None,
+        **kwargs: Any,
+    ) -> None:
+        """
+        Initialize the world object.
+
+        Parameters:
+            name (str): Name of the world.
+            height (float): Height of the world.
+            width (float): Width of the world.
+            step_time (float): Time interval between steps.
+            sample_time (float): Time interval between samples.
+            offset (list): Offset for the world's position.
+            step_mode (str): ``internal`` lets IR-SIM advance object states;
+                ``external`` expects callers to update states before each
+                environment step.
+            control_mode (str): Control mode ('auto' or 'keyboard').
+            collision_mode (str): ``stop`` halts colliding objects,
+                ``unobstructed`` ignores collisions, ``unobstructed_obstacles``
+                lets only obstacles overlap, and ``contact`` resolves overlaps
+                as rigid-body contacts with ``mass``, ``friction``, ``inertia``
+                and ``restitution``.
+            gravity (float): Gravitational acceleration in m/s^2; with a
+                body's ``friction`` and ``mass`` it gives the ground friction
+                force the ``contact`` mode works with.
+            friction (float): Ground friction coefficient objects get unless
+                they set their own (PhysX's material default ``0.5``).
+            restitution (float): Bounciness objects get unless they set their
+                own (``0``, Isaac Lab's material default: no bounce).
+            drive_tau (float): Drive lag in seconds of driven objects in
+                ``contact`` mode unless their kinematics set ``tau``; ``0``
+                (the default) tracks commands instantly.
+            obstacle_map: ``None``, image path (str), grid ndarray, or generator spec dict.
+            mdownsample (int): Downsampling factor for the obstacle map.
+            plot (dict): Plot configuration.
+            status (str): Initial simulation status.
+            world_param_instance: Optional WorldParam instance. If provided, uses
+                this instance for param storage; otherwise falls back to global.
+        """
+
+        # Environment reference for accessing params (set by EnvBase after creation)
+        self._env = None
+
+        # Store world_param instance or fallback to global
+        if world_param_instance is not None:
+            self._wp = world_param_instance
+        else:
+            from irsim.config import world_param
+
+            self._wp = world_param
+
+        # basic properties
+        if offset is None:
+            offset = [0, 0]
+        if plot is None:
+            plot = {}
+
+        self.name = os.path.basename(name or "world").split(".")[0]
+        self.height = height
+        self.width = width
+        self.step_time = step_time
+        self.sample_time = sample_time if sample_time is not None else step_time
+        # at least one step per sample; truncate like int() always did, but drop
+        # floating-point noise first (0.3 / 0.1 is 2.999..., which must be 3)
+        self.sample_steps = max(1, int(round(self.sample_time / step_time, 9)))
+        self.offset = offset
+
+        self.count = 0
+        self.sampling = True
+
+        self._wp.step_time = step_time
+
+        self.x_range = [self.offset[0], self.offset[0] + self.width]
+        self.y_range = [self.offset[1], self.offset[1] + self.height]
+
+        # obstacle map
+        self.grid_map, self.obstacle_index, self.obstacle_positions = self.gen_grid_map(
+            obstacle_map, mdownsample
+        )
+
+        # fog of map: a grey overlay revealed by lidar line of sight. The fog
+        # resolution defaults to the obstacle map's cell size (``self.reso``,
+        # set by gen_grid_map), or 0.1 m when there is no obstacle map.
+        if fog_map:
+            if fog_map_resolution is None:
+                fog_map_resolution = (
+                    float(self.reso[0, 0]) if self.grid_map is not None else 0.1
+                )
+            self.fog_map = FogMap(
+                width=self.width,
+                height=self.height,
+                resolution=fog_map_resolution,
+                world_offset=self.offset,
+            )
+        else:
+            self.fog_map = None
+
+        # irregular wave field (ASVLite linear FK); None when world.wave is omitted
+        if wave:
+            from irsim.lib.algorithm.wave import WaveField
+
+            self.wave_field = WaveField.from_config(wave)
+        else:
+            self.wave_field = None
+
+        # visualization
+        self.plot_parse = plot
+
+        self.status = status
+
+        # mode
+        self.step_mode = check_choice(step_mode, "step_mode", ("internal", "external"))
+        self._wp.step_mode = self.step_mode
+        self._wp.control_mode = control_mode
+        self._wp.collision_mode = collision_mode
+        self._wp.gravity = check_number(
+            gravity, "gravity", low=0.0, strict_low=True, context="world"
+        )
+        self._wp.friction = check_number(friction, "friction", low=0.0, context="world")
+        self._wp.restitution = check_number(
+            restitution, "restitution", low=0.0, high=1.0, context="world"
+        )
+        self._wp.drive_tau = check_number(
+            drive_tau, "drive_tau", low=0.0, context="world"
+        )
+
+        check_unknown_kwargs(
+            kwargs, self._VALID_PARAMS, context=" in 'world' config", logger=self.logger
+        )
+
+    def step(self, objects: list[Any] | None = None) -> None:
+        """
+        Advance the simulation by one step.
+
+        Args:
+            objects: Current scene objects. When ``fog_map`` is enabled, their
+                lidars reveal the fog-of-map overlay along their line of sight.
+                Pass ``None`` or an empty list to skip the fog update.
+        """
+        self.count += 1
+        self.sampling = self.count % self.sample_steps == 0
+
+        self._wp.time = self.time
+        self._wp.count = self.count
+
+        self._reveal_fog(objects)
+
+    def _reveal_fog(self, objects: list[Any] | None) -> None:
+        """Reveal the fog-of-map for each robot.
+
+        Uses the robot's lidar line of sight when present, otherwise its
+        field-of-view sector (``fov`` / ``fov_radius``) if one is configured.
+        Obstacles never reveal fog, even when they carry a lidar or a fov: the
+        fog is what the robots have explored.
+        """
+        if self.fog_map is None or not objects:
+            return
+        for obj in objects:
+            if obj.role != "robot":
+                continue
+            if obj.lidar is not None:
+                # The angles the beams were cast along (nominal plus angle
+                # noise), so the ranges are revealed along the right rays.
+                self.fog_map.reveal_from_lidar(
+                    obj.lidar.lidar_origin[:, 0],
+                    obj.lidar.cast_angles,
+                    obj.lidar.range_data,
+                )
+            elif obj.fov and obj.fov_radius:
+                self.fog_map.reveal_fov(obj.state[:3, 0], obj.fov, obj.fov_radius)
+
+    def gen_grid_map(
+        self,
+        obstacle_map: Any | None = None,
+        mdownsample: int = 1,
+    ) -> tuple:
+        """Generate a grid map for obstacles.
+
+        The *obstacle_map* value is resolved to a float64 ndarray by
+        :py:func:`irsim.world.map.resolve_obstacle_map`.  Accepted types:
+        ``None``, path string (image), ndarray, or generator spec dict.
+
+        Args:
+            obstacle_map: ``None``, path string, ndarray, or generator spec dict.
+            mdownsample (int): Downsampling factor.
+
+        Returns:
+            tuple: ``(grid_map, obstacle_index, obstacle_positions)``.
+        """
+        grid_map = resolve_obstacle_map(
+            obstacle_map,
+            world_width=self.width,
+            world_height=self.height,
+        )
+
+        if grid_map is not None:
+            grid_map = grid_map[::mdownsample, ::mdownsample]
+            x_reso = self.width / grid_map.shape[0]
+            y_reso = self.height / grid_map.shape[1]
+            self.reso = np.array([[x_reso], [y_reso]])
+            obstacle_index = np.array(np.where(grid_map > 50))
+            obstacle_positions = (
+                np.array([[self.offset[0]], [self.offset[1]]])
+                + (obstacle_index + 0.5) * self.reso
+            )
+        else:
+            obstacle_index = None
+            obstacle_positions = None
+            self.reso = np.zeros((2, 1))
+
+        return grid_map, obstacle_index, obstacle_positions
+
+    def get_map(
+        self, resolution: float = 0.1, obstacle_list: list[Any] | None = None
+    ) -> "Map":
+        """
+        Get the map of the world with the given resolution.
+
+        When *resolution* is coarser than the obstacle grid, the grid is
+        downsampled (conservative: any obstacle in a block marks the block) so
+        that planning and collision use the same grid. When *resolution* is
+        finer than the grid, no upsampling is done; planning uses the grid
+        resolution and a warning is emitted.
+        """
+        world_offset = (float(self.offset[0]), float(self.offset[1]))
+        grid = self.grid_map
+        res = resolution
+
+        if grid is not None:
+            if not (np.isfinite(res) and res > 0):
+                res = float(self.width / grid.shape[0])
+                warnings.warn(
+                    f"resolution must be positive and finite; using grid "
+                    f"resolution {res}.",
+                    stacklevel=2,
+                )
+            else:
+                current_rx = self.width / grid.shape[0]
+                current_ry = self.height / grid.shape[1]
+                thresh_coarser = 1.05
+                thresh_finer = 0.95
+                if res > max(current_rx, current_ry) * thresh_coarser:
+                    grid = _downsample_occupancy_grid(
+                        grid, self.width, self.height, res
+                    )
+                    warnings.warn(
+                        f"Planning grid downsampled from ({self.grid_map.shape[0]}, "
+                        f"{self.grid_map.shape[1]}) at {current_rx:.4f}m/cell to "
+                        f"({grid.shape[0]}, {grid.shape[1]}) at {res}m/cell.",
+                        stacklevel=2,
+                    )
+                elif res < min(current_rx, current_ry) * thresh_finer:
+                    warnings.warn(
+                        f"Requested resolution ({res}) is finer than the "
+                        f"obstacle grid ({current_rx:.4f} x {current_ry:.4f}). "
+                        "Planning will use the grid resolution.",
+                        stacklevel=2,
+                    )
+
+        return Map(
+            self.width,
+            self.height,
+            res,
+            obstacle_list,
+            grid,
+            world_offset=world_offset,
+        )
+
+    def reset(self) -> None:
+        """
+        Reset the world simulation.
+        """
+
+        self._wp.count = 0
+        self.count = 0
+        if self.fog_map is not None:
+            self.fog_map.reset()
+
+    @property
+    def time(self) -> float:
+        """
+        Get the current simulation time.
+
+        Returns:
+            float: Current time based on steps and step_time.
+        """
+        return round(self.count * self.step_time, 2)
+
+    @property
+    def time_s(self) -> float:
+        """Simulation time [s] without display rounding (for wave phase)."""
+        return self.count * self.step_time
+
+    @property
+    def _env_param(self):
+        """
+        Access env_param via env instance if available, otherwise fallback to global.
+
+        Returns:
+            EnvParam: The env param instance.
+        """
+        env = getattr(self, "_env", None)
+        if env is not None:
+            return env._env_param
+        from irsim.config import env_param
+
+        return env_param
+
+    @property
+    def logger(self):
+        """
+        Get the logger of the env_param.
+
+        Returns:
+            Logger: The logger associated in the env_param.
+        """
+
+        return self._env_param.logger

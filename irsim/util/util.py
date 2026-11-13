@@ -1,0 +1,1276 @@
+import difflib
+import inspect
+import math
+import os
+import sys
+from collections import Counter, deque
+from collections.abc import Iterable
+from functools import wraps
+from math import atan2, cos, pi, sin
+from typing import Any
+
+import numpy as np
+import shapely
+
+from irsim.config import env_param
+from irsim.util.random import rng
+
+
+def file_check(file_name: str | None, root_path: str | None = None) -> str | None:
+    """
+    Check whether a file exists and return its absolute path.
+
+    Searches in the following order:
+    1. The given path directly
+    2. Relative to sys.path[0]
+    3. Relative to the current working directory
+    4. Relative to the script directory
+    5. Recursively under root_path (lazy fallback)
+
+    Args:
+        file_name (str | None): Name or relative path of the file to check.
+            Returns None immediately if None.
+        root_path (str | None): Root directory for recursive search fallback.
+
+    Returns:
+        str | None: Absolute path of the file if found, None otherwise.
+    """
+    if file_name is None:
+        return None
+
+    paths_to_check = [
+        file_name,
+        os.path.join(sys.path[0], file_name),
+        os.path.join(os.getcwd(), file_name),
+        os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), file_name),
+    ]
+
+    for candidate_path in paths_to_check:
+        if os.path.isfile(candidate_path):
+            return os.path.abspath(candidate_path)
+
+    found = find_file(root_path, file_name) if root_path else None
+    if found:
+        return found
+
+    logger = getattr(env_param, "logger", None)
+    if logger is not None:
+        logger.warning(f"{file_name} not found")
+
+    return None
+
+
+def find_file(root_path: str | None, target_filename: str) -> str | None:
+    """
+    Recursively search for a file under root_path.
+
+    Args:
+        root_path (str | None): Directory to search under. Returns None if None.
+        target_filename (str): Name of the file to find.
+
+    Returns:
+        str | None: Absolute path if found, None otherwise.
+    """
+
+    if root_path is None:
+        return None
+
+    for dirpath, _dirnames, filenames in os.walk(root_path):
+        if target_filename in filenames:
+            return os.path.abspath(os.path.join(dirpath, target_filename))
+    return None
+
+
+def _emit_log(level: str, msg: str) -> None:
+    """Emit ``msg`` at ``level`` through the env logger, if one is configured.
+
+    Resolves the logger via the global ``env_param`` proxy -- the same fallback
+    branch objects use in their ``_env_param`` accessor -- for context-free code
+    (geometry/kinematics handlers, etc.) that has no env instance. No-ops when no
+    logger is configured, e.g. geometry built standalone outside ``irsim.make``,
+    instead of printing unconditionally.
+    """
+    logger = getattr(env_param, "logger", None)
+    if logger is not None:
+        getattr(logger, level)(msg)
+
+
+def log_warning(msg: str) -> None:
+    """Emit a warning through the env logger so it respects ``log_level``."""
+    _emit_log("warning", msg)
+
+
+def log_warning_once(msg: str) -> None:
+    """Emit ``msg`` as a warning once (then at DEBUG); see ``EnvLogger.warning_once``.
+
+    Loggers without ``warning_once`` (e.g. a plain ``logging.Logger``) get a
+    regular warning instead.
+    """
+    logger = getattr(env_param, "logger", None)
+    if logger is not None:
+        getattr(logger, "warning_once", logger.warning)(msg)
+
+
+def log_error(msg: str) -> None:
+    """Emit an error through the env logger so it respects ``log_level``."""
+    _emit_log("error", msg)
+
+
+def WrapToPi(rad: float, positive: bool = False) -> float:
+    """The function `WrapToPi` transforms an angle in radians to the range [-pi, pi].
+
+    Args:
+
+        rad (float): Angle in radians. The `rad` parameter in the `WrapToPi` function represents an angle in radians that you want to transform to the range `[-pi, pi]`. The function ensures that the angle is within this range by wrapping it around if it exceeds the bounds.
+
+        positive (bool): Whether to return the positive value of the angle. Useful for angles difference.
+
+    Returns:
+        The function `WrapToPi(rad)` returns the angle `rad` wrapped to the range [-pi, pi].
+
+    """
+    if not np.isfinite(rad):
+        return 0.0
+
+    rad = (rad + pi) % (2 * pi) - pi
+
+    return rad if not positive else abs(rad)
+
+
+def WrapTo2Pi(rad: float) -> float:
+    """The function `WrapTo2Pi` transforms an angle in radians to the range [0, 2pi].
+
+    Args:
+
+        rad (float): Angle in radians.
+            The `rad` parameter in the `WrapTo2Pi` function represents an angle in radians that you want to transform to the range `[0, 2pi]`. The function ensures that the angle is within this range by wrapping it around if it exceeds the bounds.
+
+    Returns:
+        The function `WrapTo2Pi(rad)` returns the angle `rad` wrapped to the range [0, 2pi].
+
+    """
+    if not np.isfinite(rad):
+        return 0.0
+
+    return rad % (2 * pi)
+
+
+def ClipTo2Pi(rad: float) -> float:
+    """Clip an angular span, such as a sensor sweep or a field of view, to [0, 2pi].
+
+    Unlike :func:`WrapTo2Pi`, a full circle stays ``2pi`` instead of wrapping to ``0``.
+    Non-finite input yields ``0.0``, as in :func:`WrapTo2Pi`.
+
+    Args:
+        rad (float): Angular span in radians.
+
+    Returns:
+        float: ``rad`` clipped to the range [0, 2pi].
+    """
+    if not np.isfinite(rad):
+        return 0.0
+
+    return float(np.clip(rad, 0.0, 2 * pi))
+
+
+def WrapToRegion(rad: float, range: list[float]) -> float:
+    """
+    Transform an angle to a defined range, with length of 2*pi.
+
+    Args:
+        rad (float): Angle in radians.
+        range (list): List defining the range [min, max].
+
+    Returns:
+        float: Wrapped angle.
+    """
+    if len(range) < 2:
+        raise ValueError(f"Parameter 'range' must have length >= 2, got {len(range)}")
+    assert range[1] - range[0] == 2 * pi
+    while rad > range[1]:
+        rad = rad - 2 * pi
+    while rad < range[0]:
+        rad = rad + 2 * pi
+    return rad
+
+
+def convert_list_length(
+    input_data: list[Any], number: int = 0, per_object: bool = False
+) -> list[Any]:
+    """
+    Convert input to a list with a specific length.
+
+    A scalar, or a list of numbers such as a state or velocity vector, is
+    repeated for every object. Any other list already holds one entry per
+    object and is padded with its last entry or truncated.
+
+    Args:
+        input_data: Data to convert.
+        number (int): Desired length.
+        per_object (bool): Treat a list of numbers as one value per object
+            instead of one vector shared by all, e.g. ``mass: [0.5, 2]``.
+
+    Returns:
+        list: Converted list.
+    """
+    if number == 0:
+        return []
+    if (
+        not isinstance(input_data, list)
+        or not input_data
+        or (not per_object and is_list_of_numbers(input_data))
+    ):
+        return [input_data] * number
+    if len(input_data) <= number:
+        input_data.extend([input_data[-1]] * (number - len(input_data)))
+    if len(input_data) > number:
+        input_data = input_data[:number]
+    return input_data
+
+
+def convert_list_length_dict(input_data: list[Any], number: int = 0) -> list[Any]:
+    """
+    Convert input to a list with a specific length for dictionaries.
+
+    Args:
+        input_data: Data to convert.
+        number (int): Desired length.
+
+    Returns:
+        list: Converted list.
+    """
+    if number == 0:
+        return []
+    if not isinstance(input_data, list) or is_list_of_dicts(input_data):
+        return [input_data] * number
+    if len(input_data) <= number:
+        input_data.extend([input_data[-1]] * (number - len(input_data)))
+    if len(input_data) > number:
+        input_data = input_data[:number]
+    return input_data
+
+
+def is_list_of_dicts(lst: Any) -> bool:
+    """
+    Check if a list contains only dictionaries.
+
+    Args:
+        lst (list): List to check.
+
+    Returns:
+        bool: True if all elements are dictionaries, False otherwise.
+    """
+    return isinstance(lst, list) and all(isinstance(sub, dict) for sub in lst)
+
+
+def is_list_of_numbers(lst: Any) -> bool:
+    """
+    Check if a list contains only numbers.
+
+    Args:
+        lst (list): List to check.
+
+    Returns:
+        bool: True if all elements are numbers, False otherwise.
+    """
+    return isinstance(lst, list) and all(
+        isinstance(sub, int | float | np.number) for sub in lst
+    )
+
+
+def is_list_of_lists(lst: Any) -> bool:
+    """
+    Check if a list contains lists.
+
+    Args:
+        lst (list): List to check.
+
+    Returns:
+        bool: True if any element is a list, False otherwise.
+    """
+    return isinstance(lst, list) and any(isinstance(sub, list) for sub in lst)
+
+
+def is_list_not_list_of_lists(lst: Any) -> bool:
+    """
+    Check if a list does not contain lists.
+
+    Args:
+        lst (list): List to check.
+
+    Returns:
+        bool: True if no elements are lists, False otherwise.
+    """
+    return isinstance(lst, list) and all(not isinstance(sub, list) for sub in lst)
+
+
+def find_duplicates(values: Iterable[Any]) -> list[Any]:
+    """
+    Find the values that appear more than once.
+
+    Args:
+        values (Iterable): Values to inspect, such as object names.
+
+    Returns:
+        list: The repeated values, in first-seen order.
+    """
+
+    return [value for value, count in Counter(values).items() if count > 1]
+
+
+def find_object_by_identity(
+    objects: Iterable[Any],
+    name: str | None = None,
+    object_id: int | None = None,
+) -> Any | None:
+    """
+    Find the first object matching a stable name, then an id.
+
+    Names are matched first, because they are the identity shared across
+    simulators; ids are only used as a fallback.
+
+    Args:
+        objects (Iterable): Objects to search, each with ``name`` and ``id``.
+        name (str): Name to look for. Ignored when None or empty.
+        object_id (int): Id to look for when the name does not match.
+
+    Returns:
+        The matching object, or None if neither identity matches.
+    """
+
+    id_match = None
+
+    for obj in objects:
+        if name and obj.name == name:
+            return obj
+        if object_id is not None and id_match is None and obj.id == object_id:
+            id_match = obj
+
+    return id_match
+
+
+def filter_by_role(objects: list, target_roles: str) -> list:
+    """
+    The objects a behavior reacts to, picked by ``target_roles``.
+
+    ``'all'`` keeps every object, ``'robot'`` or ``'obstacle'`` keeps that
+    role only. The per-object ``Behavior`` applies it to one object's
+    surroundings and ``GroupBehavior`` to a group's, so the behavior functions
+    and classes never read ``target_roles`` themselves.
+
+    Args:
+        objects (list): Objects to pick from, each with a ``role``.
+        target_roles (str): ``'all'``, ``'robot'`` or ``'obstacle'``.
+
+    Returns:
+        list: The selected objects; ``objects`` itself for ``'all'``.
+    """
+    if target_roles in ("robot", "obstacle"):
+        return [obj for obj in objects if obj.role == target_roles]
+    return objects
+
+
+def relative_position(
+    position1: np.ndarray, position2: np.ndarray, topi: bool = True
+) -> tuple[float, float]:
+    """
+    Calculate the relative position and angle between two points.
+
+    Args:
+        position1 (np.array): First position [x, y] (2x1).
+        position2 (np.array): Second position [x, y] (2x1).
+        topi (bool): Whether to wrap angle to [-pi, pi] (default True).
+
+    Returns:
+        tuple: Distance and angle (radians).
+    """
+    distance = dist_hypot(
+        position1[0, 0], position1[1, 0], position2[0, 0], position2[1, 0]
+    )
+    radian = atan2(position2[1, 0] - position1[1, 0], position2[0, 0] - position1[0, 0])
+    if topi:
+        radian = WrapToPi(radian)
+    return distance, radian
+
+
+def get_transform(state: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Get rotation and translation matrices from state.
+
+    Args:
+        state (np.array): State [x, y, theta] (3x1) or [x, y] (2x1).
+
+    Returns:
+        tuple: Translation vector and rotation matrix.
+    """
+    if state.shape == (2, 1):
+        rot = np.array([[1, 0], [0, 1]])
+        trans = state[0:2]
+    else:
+        rot = np.array(
+            [
+                [cos(state[2, 0]), -sin(state[2, 0])],
+                [sin(state[2, 0]), cos(state[2, 0])],
+            ]
+        )
+        trans = state[0:2]
+    return trans, rot
+
+
+def transform_point_with_state(point: np.ndarray, state: np.ndarray) -> np.ndarray:
+    """
+    Transform a point using a state.
+
+    Args:
+        point (np.array): Point [x, y, theta] (3x1).
+        state (np.array): State [x, y, theta] (3x1).
+
+    Returns:
+        np.array: Transformed point (2x1).
+    """
+    trans, rot = get_transform(state)
+    new_position = rot @ point[0:2] + trans
+    new_theta = WrapToPi(point[2, 0] + state[2, 0])
+    return np.array([new_position[0, 0], new_position[1, 0], new_theta]).reshape((3, 1))
+
+
+def get_affine_transform(state: np.ndarray) -> list[float]:
+    """
+    Get affine transform parameters from state.
+
+    Args:
+        state (np.array): State [x, y, theta] (3x1).
+
+    Returns:
+        list: Affine transform parameters.
+    """
+    return [
+        cos(state[2, 0]),
+        -sin(state[2, 0]),
+        sin(state[2, 0]),
+        cos(state[2, 0]),
+        state[0, 0],
+        state[1, 0],
+    ]
+
+
+def geometry_transform(geometry: Any, state: np.ndarray) -> Any:
+    """
+    Rigidly transform a geometry by a state: rotate by ``theta``, then translate.
+
+    Args:
+        geometry: Shapely geometry to transform.
+        state (np.array or sequence): ``[x, y, theta]``; ``theta`` defaults to 0.
+
+    Returns:
+        Transformed geometry.
+    """
+    values = np.asarray(state, dtype=float).reshape(-1)
+    x, y = values[0], values[1]
+    theta = values[2] if values.size >= 3 else 0.0
+    cos_t, sin_t = np.cos(theta), np.sin(theta)
+
+    # Elementwise rather than ``coords @ R``: BLAS matmul can raise spurious
+    # floating-point warnings on some platforms, and this is just as fast.
+    def rotate_translate(coords):
+        px, py = coords[:, 0], coords[:, 1]
+        return np.column_stack(
+            (px * cos_t - py * sin_t + x, px * sin_t + py * cos_t + y)
+        )
+
+    with np.errstate(all="ignore"):  # inf/nan states mark an invalid geometry
+        return shapely.transform(geometry, rotate_translate)
+
+
+def vertices_transform(vertices: np.ndarray, state: np.ndarray) -> np.ndarray | None:
+    """
+    Transform vertices using a state.
+
+    Args:
+        vertices (np.array): Vertices of the object. (2xN)
+        state (np.array): State [x, y, theta] (3x1).
+
+    Returns:
+        np.array: Transformed vertices.
+    """
+
+    if vertices is None or state is None:
+        return None
+
+    trans, rot = get_transform(state)
+    return rot @ vertices + trans
+
+
+def vel_world2omni(state_ori: float, vel_world: np.ndarray) -> np.ndarray:
+    """
+    Convert a world-frame velocity to an omni command.
+
+    ``[vx, vy]`` describes the rigid-body motion in the world, which is what
+    holonomic planners such as RVO, SFM and ORCA produce, while a robot is
+    commanded in its own frame. For ``omni`` this rotation is the whole
+    conversion; a model that also steers, such as ``omni_angular``, gets only
+    its translation from here and needs a yaw rate of its own.
+    :func:`vel_world2diff` does the equivalent for a differential robot.
+
+    Args:
+        state_ori (float): Orientation angle.
+        vel_world (np.array): World-frame velocity [vx, vy] (2x1).
+
+    Returns:
+        np.array: Body-frame velocity [forward, lateral] (2x1).
+    """
+    vel_world = np.asarray(vel_world, dtype=float).reshape(-1)
+    cos_t, sin_t = cos(state_ori), sin(state_ori)
+    forward = vel_world[0] * cos_t + vel_world[1] * sin_t
+    lateral = -vel_world[0] * sin_t + vel_world[1] * cos_t
+
+    return np.array([[forward], [lateral]])
+
+
+def vel_omni2world(state_ori: float, vel_body: np.ndarray) -> np.ndarray:
+    """
+    Convert an omni command to a world-frame velocity.
+
+    The inverse of :func:`vel_world2omni`; :func:`vel_diff2world` does the
+    equivalent for a differential robot.
+
+    Args:
+        state_ori (float): Orientation angle.
+        vel_body (np.array): Body-frame velocity [forward, lateral] (2x1).
+
+    Returns:
+        np.array: World-frame velocity [vx, vy] (2x1).
+    """
+    vel_body = np.asarray(vel_body, dtype=float).reshape(-1)
+    cos_t, sin_t = cos(state_ori), sin(state_ori)
+    vx = vel_body[0] * cos_t - vel_body[1] * sin_t
+    vy = vel_body[0] * sin_t + vel_body[1] * cos_t
+
+    return np.array([[vx], [vy]])
+
+
+def vel_world2diff(
+    state_ori: float,
+    vel_omni: np.ndarray,
+    w_max: float = 1.5,
+    guarantee_time: float = 0.2,
+    tolerance: float = 0.1,
+    mini_speed: float = 0.02,
+) -> np.ndarray:
+    """
+    Convert a world-frame velocity to a differential command.
+
+    Args:
+        state_ori (float): Orientation angle.
+        vel_omni (np.array): World-frame velocity [vx, vy] (2x1). The name is
+            kept from ``omni_to_diff`` so existing keyword callers still work.
+        w_max (float): Maximum angular velocity.
+        guarantee_time (float): Time to guarantee velocity.
+        tolerance (float): Angular tolerance.
+        mini_speed (float): Minimum speed threshold.
+
+    Returns:
+        np.array: Differential velocity [linear, angular] (2x1).
+    """
+    if isinstance(vel_omni, list):
+        vel_omni = np.array(vel_omni)
+    if isinstance(vel_omni, np.ndarray) and vel_omni.ndim == 1:
+        vel_omni = vel_omni[:, np.newaxis]
+
+    speed = np.sqrt(vel_omni[0, 0] ** 2 + vel_omni[1, 0] ** 2)
+
+    if speed <= mini_speed:
+        return np.zeros((2, 1))
+
+    vel_radians = atan2(vel_omni[1, 0], vel_omni[0, 0])
+    robot_radians = state_ori
+    diff_radians = robot_radians - vel_radians
+
+    diff_radians = WrapToPi(diff_radians)
+
+    if abs(diff_radians) < tolerance:
+        w = 0
+    else:
+        w = -diff_radians / guarantee_time
+        if w > w_max:
+            w = w_max
+        if w < -w_max:
+            w = -w_max
+
+    v = speed * cos(diff_radians)
+    if v < 0:
+        v = 0
+
+    return np.array([[v], [w]])
+
+
+def vel_diff2world(state_ori: float, vel_diff: np.ndarray) -> np.ndarray:
+    """
+    Convert a differential command to a world-frame velocity.
+
+    Args:
+        state_ori (float): Orientation angle.
+        vel_diff (np.array): Differential velocity [linear, angular] (2x1).
+
+    Returns:
+        np.array: Omnidirectional velocity [vx, vy] (2x1).
+    """
+    if len(vel_diff.shape) == 0:
+        return np.zeros((2, 1))
+
+    vel_linear = vel_diff[0, 0]
+    theta = state_ori
+    vx = vel_linear * cos(theta)
+    vy = vel_linear * sin(theta)
+
+    return np.array([[vx], [vy]])
+
+
+def cross_product(o: list[float], a: list[float], b: list[float]) -> float:
+    """
+    Compute the cross product of vectors OA and OB.
+
+    Args:
+        o, a, b (array-like): Points representing vectors.
+
+    Returns:
+        float: Cross product value.
+    """
+    return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+
+def is_convex_and_ordered(points: np.ndarray) -> tuple[bool, str | None]:
+    """
+    Determine if the polygon is convex and return the order (CW or CCW).
+
+    Args:
+        points (np.ndarray): A 2xN NumPy array representing the vertices of the polygon.
+
+    Returns:
+        (bool, str): A tuple where the first element is True if the polygon is convex,
+                      and the second element is 'CW' or 'CCW' based on the order.
+                      If not convex, returns (False, None).
+    """
+    n = points.shape[1]  # Number of points
+    if n < 3:
+        return False, None  # A polygon must have at least 3 points
+
+    # Initialize the direction for the first cross product
+    direction = 0
+
+    for i in range(n):
+        o = points[:, i]
+        a = points[:, (i + 1) % n]
+        b = points[:, (i + 2) % n]
+
+        cross = cross_product(o, a, b)
+
+        if cross != 0:  # Only consider non-collinear points
+            if direction == 0:
+                direction = 1 if cross > 0 else -1
+            elif (cross > 0 and direction < 0) or (cross < 0 and direction > 0):
+                return False, None  # Not convex
+
+    return True, "CCW" if direction > 0 else "CW"
+
+
+def gen_inequal_from_vertex(vertex: np.ndarray):
+    """
+    Generate inequality constraints for a convex polygon.
+
+    Args:
+        vertex (np.array): Vertices of the polygon (2xN).
+
+    Returns:
+        tuple: G matrix and h vector for the inequality Gx <= h.
+    """
+    convex_flag, order = is_convex_and_ordered(vertex)
+
+    if not convex_flag:
+        log_warning("The polygon constructed by vertex is not convex.")
+        return None, None
+
+    if order == "CW":
+        vertex = vertex[:, ::-1]
+
+    num = vertex.shape[1]
+
+    G = np.zeros((num, 2))
+    h = np.zeros((num, 1))
+
+    for i in range(num):
+        if i + 1 < num:
+            pre_point = vertex[:, i]
+            next_point = vertex[:, i + 1]
+        else:
+            pre_point = vertex[:, i]
+            next_point = vertex[:, 0]
+
+        diff = next_point - pre_point
+
+        a = diff[1]
+        b = -diff[0]
+        c = a * pre_point[0] + b * pre_point[1]
+
+        G[i, 0] = a
+        G[i, 1] = b
+        h[i, 0] = c
+
+    return G, h
+
+
+def distance(
+    point1: list[float] | np.ndarray, point2: list[float] | np.ndarray
+) -> float:
+    """
+    Compute the distance between two points.
+
+    Args:
+        point1 (np.array): First point [x, y] (2x1).
+        point2 (np.array): Second point [x, y] (2x1).
+
+    Returns:
+        float: Distance between points.
+    """
+    return dist_hypot(point1[0, 0], point1[1, 0], point2[0, 0], point2[1, 0])
+
+
+def dist_hypot(x1: float, y1: float, x2: float, y2: float) -> float:
+    """Compute Euclidean distance between two 2D points."""
+    return math.hypot(x2 - x1, y2 - y1)
+
+
+def random_point_range(
+    range_low: list[float] | None = None, range_high: list[float] | None = None
+) -> list[float]:
+    """
+    Generate a random point within a range.
+
+    Args:
+        range_low (list): Lower bound of the range.
+        range_high (list): Upper bound of the range.
+
+    Returns:
+        np.array: Random point within the range.
+    """
+    if range_low is None:
+        range_low = np.c_[[0, 0, -pi]]
+    elif isinstance(range_low, list):
+        range_low = np.c_[range_low]
+    elif isinstance(range_low, np.ndarray) and range_low.ndim == 1:
+        range_low = range_low[:, np.newaxis]
+
+    if range_high is None:
+        range_high = np.c_[[10, 10, pi]]
+    elif isinstance(range_high, list):
+        range_high = np.c_[range_high]
+    elif isinstance(range_high, np.ndarray) and range_high.ndim == 1:
+        range_high = range_high[:, np.newaxis]
+
+    return rng.uniform(range_low, range_high)
+
+
+def is_2d_list(data: list | deque) -> bool:
+    """
+    Returns True if 'data' is a non-empty list of lists (or tuples), indicating a 2D structure.
+    Returns False if 'data' is a single list
+    """
+
+    if isinstance(data, np.ndarray):
+        return False
+
+    # Check if data is a list and is not empty.
+    if data:
+        first_element = data[0]
+        if isinstance(first_element, list | tuple):
+            return True
+
+    return False
+
+
+# decorator
+
+
+def validate_shape(**shape_requirements):
+    """
+    Decorator to validate that numpy array parameters have minimum shape[0] dimensions.
+
+    Args:
+        **shape_requirements: Mapping of parameter names to minimum shape[0] values.
+            e.g., state=3 means state.shape[0] must be >= 3
+
+    Example:
+        .. code-block:: python
+
+            @validate_shape(state=3, velocity=2)
+            def differential_kinematics(state, velocity, step_time):
+                ...
+
+    Raises:
+        TypeError: If parameter is not a numpy array.
+        ValueError: If parameter shape[0] is less than required.
+    """
+
+    def decorator(func):
+        # Resolve positions once; binding the signature on every call costs
+        # ~3 us, which matters for per-object per-step kinematics.
+        positions = {
+            name: i for i, name in enumerate(inspect.signature(func).parameters)
+        }
+
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            for param, min_dim in shape_requirements.items():
+                index = positions[param]
+                value = kwargs.get(param, args[index] if index < len(args) else None)
+                if value is None:
+                    continue
+                if not hasattr(value, "shape"):
+                    raise TypeError(
+                        f"Parameter '{param}' must be a numpy array, "
+                        f"got {type(value).__name__}"
+                    )
+                if value.shape[0] < min_dim:
+                    raise ValueError(
+                        f"Parameter '{param}' must have shape[0] >= {min_dim}, "
+                        f"got {value.shape[0]}"
+                    )
+
+            return func(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
+
+def validate_length(**length_requirements):
+    """
+    Decorator to validate that sequence parameters have minimum length.
+
+    Args:
+        **length_requirements: Mapping of parameter names to minimum length values.
+            e.g., alpha=4 means len(alpha) must be >= 4
+
+    Example:
+        .. code-block:: python
+
+            @validate_length(alpha=4)
+            def some_function(alpha):
+                ...
+
+    Raises:
+        TypeError: If parameter doesn't support len().
+        ValueError: If parameter length is less than required.
+    """
+
+    def decorator(func):
+        sig = inspect.signature(func)
+
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            bound = sig.bind(*args, **kwargs)
+            bound.apply_defaults()
+
+            for param, min_len in length_requirements.items():
+                if param in bound.arguments:
+                    value = bound.arguments[param]
+                    if value is not None:
+                        try:
+                            length = len(value)
+                        except TypeError:
+                            raise TypeError(
+                                f"Parameter '{param}' must be a sequence, "
+                                f"got {type(value).__name__}"
+                            ) from None
+                        if length < min_len:
+                            raise ValueError(
+                                f"Parameter '{param}' must have length >= {min_len}, "
+                                f"got {length}"
+                            )
+
+            return func(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
+
+def ensure_column_vector(*param_names):
+    """
+    Decorator to convert parameters to column vectors (Nx1 numpy arrays).
+
+    - Lists are converted to numpy arrays
+    - 1D arrays are reshaped to column vectors (N,) -> (N, 1)
+    - None values are left unchanged
+
+    Args:
+        *param_names: Names of parameters to convert.
+
+    Example:
+        .. code-block:: python
+
+            @ensure_column_vector('state', 'velocity')
+            def some_function(state, velocity, step_time):
+                ...
+    """
+
+    def decorator(func):
+        sig = inspect.signature(func)
+
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            bound = sig.bind(*args, **kwargs)
+            bound.apply_defaults()
+
+            for param in param_names:
+                if param in bound.arguments:
+                    value = bound.arguments[param]
+                    if value is not None:
+                        if isinstance(value, list):
+                            value = np.array(value)
+                        if isinstance(value, np.ndarray) and value.ndim == 1:
+                            value = value[:, np.newaxis]
+                        bound.arguments[param] = value
+
+            return func(*bound.args, **bound.kwargs)
+
+        return wrapper
+
+    return decorator
+
+
+def ensure_numpy(*param_names):
+    """
+    Decorator to convert parameters to numpy arrays.
+
+    - Lists are converted to numpy arrays
+    - None values are left unchanged
+    - Already numpy arrays are left unchanged
+
+    Args:
+        *param_names: Names of parameters to convert.
+
+    Example:
+        .. code-block:: python
+
+            @ensure_numpy('data', 'weights')
+            def some_function(data, weights):
+                ...
+    """
+
+    def decorator(func):
+        sig = inspect.signature(func)
+
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            bound = sig.bind(*args, **kwargs)
+            bound.apply_defaults()
+
+            for param in param_names:
+                if param in bound.arguments:
+                    value = bound.arguments[param]
+                    if value is not None and isinstance(value, list):
+                        bound.arguments[param] = np.array(value)
+
+            return func(*bound.args, **bound.kwargs)
+
+        return wrapper
+
+    return decorator
+
+
+def to_numpy(
+    data: Any,
+    default: np.ndarray | None = None,
+    expected_shape: tuple[int, ...] | None = None,
+) -> np.ndarray | None:
+    """
+    Convert input to numpy array and optionally reshape.
+
+    - If data is None: return default (reshaped if expected_shape provided).
+    - If data is a list: convert to ndarray. 1D lists become column vectors.
+    - If data is a 1D ndarray: convert to column vector.
+    - If expected_shape is provided: reshape the resulting array to it.
+    """
+
+    if data is None:
+        if default is None:
+            return None
+        return default if expected_shape is None else default.reshape(expected_shape)
+
+    arr = np.array(data) if isinstance(data, list) else data
+
+    if isinstance(arr, np.ndarray) and arr.ndim == 1:
+        arr = arr[:, np.newaxis]
+
+    if expected_shape is not None:
+        arr = np.asarray(arr).reshape(expected_shape)
+
+    return arr
+
+
+def traj_to_xy_list(
+    traj: Any, three_d: bool = False
+) -> tuple[list[float], list[float]]:
+    """
+    Convert trajectory to a list of [x, y].
+
+    Args:
+        traj (list or np.ndarray): list of points or array of points [x, y, theta].
+
+    Returns:
+        tuple: A tuple of lists containing x and y coordinates of the trajectory
+            x_list (list): List of x coordinates.
+            y_list (list): List of y coordinates.
+    """
+    if isinstance(traj, list):
+        x_list = [p[0, 0] for p in traj]
+        y_list = [p[1, 0] for p in traj]
+        if three_d:
+            z_list = [p[2, 0] for p in traj]
+    elif isinstance(traj, np.ndarray):
+        if traj.shape[1] > 1:
+            x_list = [p[0] for p in traj.T]
+            y_list = [p[1] for p in traj.T]
+            if three_d:
+                z_list = [p[2] for p in traj.T]
+        else:
+            x_list = [traj[0]]
+            y_list = [traj[1]]
+            if three_d:
+                z_list = [traj[2]]
+    else:
+        raise ValueError(f"Invalid trajectory type: {type(traj)}")
+
+    if three_d:
+        return x_list, y_list, z_list
+    return x_list, y_list
+
+
+def points_to_xy_list(
+    points: Any, three_d: bool = False
+) -> tuple[list[float], list[float]]:
+    """
+    Convert points to a list of [x, y].
+
+    Args:
+        points (list or np.ndarray): list of points or array of points [x, y].
+        three_d (bool): Whether the points are 3D. Two-coordinate points
+            (for example a 2D lidar point cloud) are placed at ``z = 0``.
+    Returns:
+        tuple: A tuple of lists containing x and y coordinates of the points
+            x_list (list): List of x coordinates.
+            y_list (list): List of y coordinates.
+    """
+
+    if points is None:
+        return [], []
+
+    def _z(point):
+        return point[2] if len(point) > 2 else 0.0
+
+    if isinstance(points, list):
+        x_list = [point[0] for point in points]
+        y_list = [point[1] for point in points]
+        if three_d:
+            z_list = [_z(point) for point in points]
+    elif isinstance(points, np.ndarray):
+        if points.shape[1] > 1:
+            x_list = [point[0] for point in points.T]
+            y_list = [point[1] for point in points.T]
+            if three_d:
+                z_list = [_z(point) for point in points.T]
+        else:
+            x_list = [points[0]]
+            y_list = [points[1]]
+            if three_d:
+                z_list = [_z(points)]
+    else:
+        raise ValueError(f"Invalid points type: {type(points)}")
+
+    if three_d:
+        return x_list, y_list, z_list
+    return x_list, y_list
+
+
+def check_number(
+    value: Any,
+    name: str,
+    low: float | None = None,
+    high: float | None = None,
+    *,
+    strict_low: bool = False,
+    allow_inf: bool = False,
+    context: str | None = None,
+    default: Any = None,
+) -> float:
+    """
+    Convert a configured value to a float and check that it lies in a range.
+
+    Used for the physical parameters of the world and of objects (mass,
+    friction, inertia, restitution, gravity, drive lag), whose YAML values
+    may be numbers or numeric strings such as ``'inf'``.
+
+    Args:
+        value: The configured value, or ``None`` for the default.
+        name (str): Parameter name for the error message.
+        low (float): Smallest allowed value, inclusive unless ``strict_low``.
+        high (float): Largest allowed value, inclusive.
+        strict_low (bool): Require the value to be greater than ``low``.
+        allow_inf (bool): Accept ``inf``, e.g. for an immovable mass.
+        context (str): Whose value it is, prefixed to the error message.
+        default: What a ``None`` value means: a number, or a callable that
+            computes it (e.g. an inertia derived from the shape). It is
+            returned as is, without the range check.
+
+    Returns:
+        float: The validated value, or the default.
+
+    Raises:
+        ValueError: If the value is not a number, is NaN, is infinite while
+            ``allow_inf`` is False, or lies outside the range.
+    """
+    if value is None:
+        return float(default() if callable(default) else default)
+    prefix = f"{context}: " if context else ""
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{prefix}{name} must be a number, got {value!r}") from exc
+    parts = []
+    if low is not None:
+        parts.append(f"{'greater than' if strict_low else 'at least'} {low:g}")
+    if high is not None:
+        parts.append(f"at most {high:g}")
+    expected = " and ".join(parts) if parts else "a finite number"
+    if allow_inf:
+        expected += " (or inf)"
+    too_low = low is not None and (number <= low if strict_low else number < low)
+    too_high = high is not None and number > high
+    if (
+        math.isnan(number)
+        or (math.isinf(number) and not allow_inf)
+        or too_low
+        or too_high
+    ):
+        raise ValueError(f"{prefix}{name} must be {expected}, got {value!r}")
+    return number
+
+
+def check_choice(
+    value: Any,
+    name: str,
+    choices: Iterable[str],
+    *,
+    context: str | None = None,
+) -> str:
+    """
+    Check that a configured string is one of the supported values.
+
+    The value is stripped and lower-cased before the comparison, so YAML
+    ``'Internal'`` matches ``'internal'``.
+
+    Args:
+        value: The configured value.
+        name (str): Parameter name for the error message.
+        choices: The supported values, already lower-case.
+        context (str): Whose value it is, prefixed to the error message.
+
+    Returns:
+        str: The normalized value.
+
+    Raises:
+        TypeError: If the value is not a string.
+        ValueError: If it is not one of the choices.
+    """
+    prefix = f"{context}: " if context else ""
+    choices = tuple(choices)
+    listed = " and ".join(
+        filter(None, [", ".join(repr(c) for c in choices[:-1]), repr(choices[-1])])
+    )
+    if not isinstance(value, str):
+        raise TypeError(f"{prefix}{name} must be a string: {listed}, got {value!r}")
+    normalized = value.strip().lower()
+    if normalized not in choices:
+        raise ValueError(
+            f"{prefix}Unsupported {name} {value!r}. Supported values are {listed}."
+        )
+    return normalized
+
+
+def fit_length(values: Iterable[Any], length: int, fill: Any = 0) -> list[Any]:
+    """
+    Truncate or zero-pad a sequence to a given length.
+
+    Args:
+        values: The sequence, e.g. a state vector from YAML.
+        length (int): Desired length.
+        fill: Value appended when the sequence is too short.
+
+    Returns:
+        list: A new list of exactly ``length`` entries.
+    """
+    values = list(values)
+    if len(values) >= length:
+        return values[:length]
+    return values + [fill] * (length - len(values))
+
+
+def is_convex_polygon(polygon: Any, tolerance: float = 1e-9) -> bool:
+    """
+    Whether a shapely polygon is convex: its convex hull has the same area.
+
+    Args:
+        polygon: A shapely ``Polygon``.
+        tolerance (float): Relative area tolerance, scaled by the larger of
+            the area and one square meter.
+
+    Returns:
+        bool: ``True`` for a convex polygon.
+    """
+    return abs(polygon.convex_hull.area - polygon.area) <= tolerance * max(
+        polygon.area, 1.0
+    )
+
+
+def check_unknown_kwargs(
+    kwargs: dict,
+    valid_keys: set[str],
+    context: str = "",
+    logger=None,
+) -> list[str]:
+    """Warn about unknown keyword arguments and suggest corrections.
+
+    When *logger* is not provided, falls back to the global
+    ``env_param.logger`` (same convention used by :func:`file_check`).
+
+    Args:
+        kwargs: Dictionary of provided keyword arguments.
+        valid_keys: Set of valid parameter names.
+        context: Optional context string for the warning message.
+        logger: Optional logger to emit warnings. If ``None``, the
+            global ``env_param.logger`` is used when available.
+
+    Returns:
+        List of warning message strings for unknown keys.
+    """
+    if logger is None:
+        logger = getattr(env_param, "logger", None)
+
+    unknown = set(kwargs) - valid_keys
+    messages = []
+    for key in sorted(unknown):
+        matches = difflib.get_close_matches(key, valid_keys, n=3, cutoff=0.6)
+        if matches:
+            msg = f"Unknown parameter '{key}'{context}. Did you mean: {', '.join(matches)}?"
+        else:
+            msg = f"Unknown parameter '{key}'{context}. Valid parameters: {', '.join(sorted(valid_keys))}"
+        messages.append(msg)
+        if logger:
+            logger.warning(msg)
+    return messages
+
+
+# Previous names, kept so existing code keeps working.
+omni_to_diff = vel_world2diff
+diff_to_omni = vel_diff2world

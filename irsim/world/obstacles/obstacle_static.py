@@ -1,0 +1,19 @@
+from irsim.world.object_base import ObjectBase
+
+
+class ObjectStatic(ObjectBase):
+    """Static object implementation used for static robots and obstacles."""
+
+    def __init__(self, color=None, role="obstacle", state_dim=3, **kwargs):
+        """Create a static object (robot or obstacle).
+
+        Args:
+            color (str): Display color. Default: the palette obstacle color.
+            role (str): Role of the object ("robot" or "obstacle").
+            state_dim (int): State vector dimension (>=3).
+            **kwargs: Forwarded to ``ObjectBase``.
+        """
+        kwargs.pop("static", None)
+        super().__init__(
+            color=color, role=role, state_dim=state_dim, static=True, **kwargs
+        )
