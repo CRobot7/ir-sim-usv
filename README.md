@@ -2,83 +2,109 @@
 
 WAM-V 无人船仿真（基于 [IR-SIM](https://github.com/hanruihua/ir-sim)）。浪扰动是 Python 重写的 ASVLite 线性 Froude-Krylov 场，挂在 `world` 上，按船位查询。
 
-## 运行 USV demo
+场景 YAML 都在 `usage/27usv_world/`。换船、开浪、开雷达**只改 YAML**，Fossen `M/C/D` 公式不用动。
 
-在仓库根目录：
+## 运行
 
 ```powershell
 conda activate irsim
 pip install -e ".[keyboard]"
 cd usage/27usv_world
-python usv_world.py
+python usv_world.py          # USV14 双体
+python wamv16_world.py       # WAM-V 16，可倒车
+python monohull_world.py     # 单体演示
 ```
 
-窗口出现后：
+- `W` / `A` `D`：前进 / 差速转向
+- `S`：仅当该船 `twj_min < 0` 时倒车（默认 `wamv` 不能反推）
+- 脚本给推力：`env.step([150.0, 150.0])`，单位牛顿，不是 m/s
 
-- 不按键：喷泵为 0，船仍会被浪推动（轨迹线）
-- `W`：双喷泵前进
-- `A` / `D`：差速转向
-- `S`：无效（喷泵不能反推）
+## 换船型
 
-无键盘时也可以直接给推力（量纲是牛顿，不是速度）：
+场景里只改 `robot.kinematics.vessel`，并让推力限幅跟这艘船的 yaml 一致。不写 `robot.shape` 时，顶视外形由 `irsim/vessels/<name>.yaml` 的 `hull.type` 生成。
 
-```python
-env.step([150.0, 150.0])  # 左、右喷泵推力 [N]
-tau = env.wave_wrench(env.robot)  # 当前船体轴浪力 [X, Y, N]
-```
-
-YAML 里 `vel_max` / `vel_min` / `key_lv_max` 沿用了 ir-sim 的通用限幅字段，**对 `kinematics: usv` 表示每泵推力 [N]**，不是 m/s。`204` 是 Klinger 2017 的 \(T_{\mathrm{wj,max}}\)。请与 `kinematics.twj_max` 保持一致；喷泵不能反推，所以 `vel_min: [0, 0]`。状态里的 `u, v` 才是 m/s。
-
-开环脚本：`python usv_thrust.py`
-
-五艘船同一片浪（喷泵为 0，按船位取力；背景是同一套 `WaveField.elevation` 的 2D 高程图）：
-
-```powershell
-python 2D_multi_usv_world.py
-```
-
-`python multi_usv_world.py` 同样会画这片浪。YAML 里 `plot.show_wave: false` 可关掉。
-
-## 激光雷达可视化
-
-改 `usage/27usv_world/usv_world.yaml` 里 `robot.plot`：
+| `vessel` | 文件 | 外形 | 推力盒 [N] |
+|---|---|---|---|
+| `wamv` | `irsim/vessels/wamv.yaml` | 双体 4.29 m | `[0, 204]` |
+| `wamv16` | `irsim/vessels/wamv16.yaml` | 双体 5.0 m | `[-500, 1000]` |
+| `monohull` | `irsim/vessels/monohull.yaml` | 单体 3.0 m | `[0, 40]` |
 
 ```yaml
 robot:
-  plot:
-    show_sensor: true     # false = 关掉雷达射线；雷达仍在算
-    show_trajectory: true # 历史轨迹线
-    traj_width: 0.12      # 细线；不设则按船宽 (~2.2 m) 画，会糊成一条带
-    show_trail: false     # true 才会画出历史船体框
-    obj_fill: false       # 船体只描边
-    obj_linewidth: 2.5    # 轮廓线宽（matplotlib points）
-    arrow_length: 3.0     # 艏向箭头长度 [m]，颜色跟船体
+  kinematics:
+    name: usv
+    vessel: wamv16          # 换成 wamv / wamv16 / monohull
+    payload: 0.0            # 仅 wamv（USV14）有效；其它船 P_full=0
+  # 不要手写 shape，否则外形不跟船走
+  vel_min: [-500, -500]     # 与 actuators.twj_min 一致；省略则从 vessel 读
+  vel_max: [1000, 1000]     # 与 actuators.twj_max 一致
+gui:
+  keyboard:
+    key_lv_max: 1000.0      # 键盘 W/S 上限，跟 vel_max 同量纲 [N]
+    key_ang_max: 1000.0
 ```
 
-## 浪场
+加一艘新船：复制 `irsim/vessels/wamv.yaml`，改 `geometry` / `load` / `hydro` / `hull.type` / `actuators.twj_min|twj_max`，场景里 `vessel:` 写成新文件名（不要后缀）。
 
-海况在同一个 YAML 的 `world.wave`。默认是 **Douglas 2 级（smooth）**：`Hs = 0.20 m`，`Tp = 5 s`（谱峰波长约 39 m，远大于 4.3 m 船长）。删掉整个 `wave` 块即无浪。
+- `hull.type: catamaran`：两根浮体 + 横梁
+- `hull.type: monohull`：一块尖艏船体（`board` 当作单体）
+- `hydro.recipe: klinger2017`：USV14 查表；其它船用 `hydro.coeffs` 填满 Fossen 系数
+
+## 海浪：物理 vs 画面
+
+**有没有浪**看有没有 `world.wave` 整块；**画不画水面**看 `world.plot.show_wave`。
 
 ```yaml
 world:
-  wave:
-    Hs: 0.20       # 有义波高 [m]；Douglas 2 级
-    Tp: 5.0
-    heading: 0.0
+  wave:                     # 删掉整个 wave: 块 = 无浪、无浪力
+    Hs: 0.20                # 有义波高 [m]；Douglas 2 级。Hs=0.6 对 4 m 船太大
+    Tp: 5.0                 # 谱峰周期 [s]
+    heading: 0.0            # 浪向 [rad]，0 = +x
+    n_freq: 20
+    n_dir: 10
     seed: 0
+  plot:
+    show_wave: true         # false = 仍有浪力，只是不画高程图
+    wave_cmap: ocean
+    wave_alpha: 0.75
+    wave_resolution: 1.0    # 网格 [m]
 ```
 
-先前 `Hs = 0.6 m` 是 3 级轻浪（slight），约为 WAM-V 吃水的 6 倍，已经超出线性 Airy / Froude-Krylov 的小振幅假设，艏向会被差分压力打得很猛。船型参数和 3DOF / FK 公式未改，只把海况降到这种 4 m 级双体船近岸作业更常见的 2 级浪。
+代码里读当前体轴浪力：
 
-船型动力学和取压几何在 `irsim/vessels/wamv.yaml`：
+```python
+tau = env.wave_wrench(env.robot)  # [X, Y, N]，单位 N / N / N·m；无浪则全 0
+```
+
+## 雷达：计算 vs 画面
+
+**有没有雷达**看 `robot.sensors` 里有没有 `lidar2d`；**画不画射线**看 `robot.plot.show_sensor`。
 
 ```yaml
 robot:
-  kinematics: {name: usv, vessel: wamv, payload: 0.0}
+  sensors:
+    - name: lidar2d
+      range_min: 0.2
+      range_max: 20.0
+      angle_range: 6.28318530718   # 2π，360°
+      number: 180
+      noise: false
+      offset: [0, 0, 0]            # 相对 CG [x, y, theta]
+      plot:
+        alpha: 0.35
+  plot:
+    show_sensor: true              # false = 不画射线，ranges 仍在算
 ```
 
-复制 `wamv.yaml` 改参数即可加浆板等其它型号（`hydro.recipe` 可改成直接填 `hydro.coeffs`）。
+多船场景默认没挂雷达。读扫描：
+
+```python
+scan = env.get_lidar_scan(0)      # dict: ranges, valid, angle_min, ...
+pts = env.robot.get_lidar_points()  # (2, N) 世界系
+```
+
+`show_sensor: false` 只关图；要关掉雷达本身，删掉 `sensors` 里那一项。
 
 ## MAPPO / 训练接口
 
-`irsim.make` 参数、`step` 动作量纲、船体状态与雷达字段、以及 light_mappo `EnvCore` 对接格式见 [PROJECT_MANIFEST.md](PROJECT_MANIFEST.md)。仿真器本身没有 `get_obs()`，`env.step()` 也不返回 reward。
+`irsim.make`、`step` 动作量纲、状态与雷达字段见 [PROJECT_MANIFEST.md](PROJECT_MANIFEST.md)。仿真器没有 `get_obs()`，`env.step()` 不返回 reward。
