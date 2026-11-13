@@ -99,7 +99,7 @@ robot:
 多船场景默认没挂雷达。读扫描：
 
 ```python
-scan = env.get_lidar_scan(0)      # dict: ranges, valid, angle_min, ...
+scan = env.get_lidar_scan(0)  # dict: ranges, valid, angle_min, ...
 pts = env.robot.get_lidar_points()  # (2, N) 世界系
 ```
 
